@@ -6421,6 +6421,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "zcash_protocol"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01fb174be84135a00fd3799161835e46f320d0028dd9446fdbd97a8d928456b6"
+dependencies = [
+ "core2",
+ "document-features",
+ "hex",
+ "memuse",
+]
+
+[[package]]
 name = "zcash_spec"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6591,6 +6603,8 @@ dependencies = [
 name = "zingo_common_components"
 version = "0.1.0"
 dependencies = [
+ "thiserror 1.0.69",
+ "zcash_protocol 0.7.0",
  "zebra-chain",
 ]
 
