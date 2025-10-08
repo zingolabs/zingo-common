@@ -4,6 +4,10 @@ resolver = "2"
 
 [workspace.dependencies]
 
+# lrz
+zcash_protocol = { git = "https://github.com/zcash/librustzcash", tag = "zcash_protocol-0.7.0" }
+zcash_client_backend = { git = "https://github.com/zcash/librustzcash", tag = "zcash_protocol-0.7.0" }
+
 # content
 zebra-chain = "2.0"
 

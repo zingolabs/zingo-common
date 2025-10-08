@@ -8,5 +8,5 @@ for_test = []
 
 [dependencies]
 thiserror.workspace = true
-zcash_protocol = "0.7.0"
+zcash_protocol = { workspace = true }
 zebra-chain = { workspace = true }

@@ -18,7 +18,7 @@ webpki-roots = "0.25"
 
 thiserror.workspace = true
 
-zcash_client_backend = { git = "https://github.com/zcash/librustzcash", rev = "d387aed7e04e881dbe30c6ff8b26a96c834c094b", features = [
+zcash_client_backend = { workspace = true, features = [
     "lightwalletd-tonic",
     "orchard",
     "transparent-inputs",
