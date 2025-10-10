@@ -53,8 +53,8 @@ pub mod client {
 }
 
 /// The connector, containing the URI to connect to.
-/// This type is mostly an interface to the get_client method,
-/// the proto-generated CompactTxStreamerClient type is the main
+/// This type is mostly an interface to the `get_client` method,
+/// the proto-generated `CompactTxStreamerClient` type is the main
 /// interface to actually communicating with a lightwalletd.
 #[derive(Clone)]
 pub struct GrpcConnector {
@@ -62,7 +62,7 @@ pub struct GrpcConnector {
 }
 
 impl GrpcConnector {
-    /// Takes a URI, and wraps in a GrpcConnector
+    /// Takes a URI, and wraps in a `GrpcConnector`
     pub fn new(uri: http::Uri) -> Self {
         Self { uri }
     }
@@ -74,7 +74,7 @@ impl GrpcConnector {
 
     /// Connect to the URI, and return a Client. For the full list of methods
     /// the client supports, see the service.proto file (some of the types
-    /// are defined in the compact_formats.proto file)
+    /// are defined in the `compact_formats.proto` file)
     pub fn get_client(
         &self,
     ) -> impl std::future::Future<
