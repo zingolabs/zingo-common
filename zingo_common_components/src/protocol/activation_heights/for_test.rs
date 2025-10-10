@@ -1,16 +1,16 @@
 use zebra_chain::parameters;
 
 /// Get the default all nu activated at 1, Network
-pub fn current_nus_configured_in_block_one_regtest_net() -> parameters::Network {
+#[must_use] pub fn current_nus_configured_in_block_one_regtest_net() -> parameters::Network {
     parameters::Network::new_regtest(all_height_one_nus())
 }
 
 /// Get sequentially activated (1,2,3,4,5,6,7,8) nus network
-pub fn nus_configured_in_sequence_regtest_net() -> parameters::Network {
+#[must_use] pub fn nus_configured_in_sequence_regtest_net() -> parameters::Network {
     parameters::Network::new_regtest(sequential_height_nus())
 }
 
-pub fn sequential_height_nus() -> parameters::testnet::ConfiguredActivationHeights {
+#[must_use] pub fn sequential_height_nus() -> parameters::testnet::ConfiguredActivationHeights {
     parameters::testnet::ConfiguredActivationHeights {
         before_overwinter: Some(1),
         overwinter: Some(2),
@@ -25,7 +25,7 @@ pub fn sequential_height_nus() -> parameters::testnet::ConfiguredActivationHeigh
         nu7: None,
     }
 }
-pub fn all_height_one_nus() -> parameters::testnet::ConfiguredActivationHeights {
+#[must_use] pub fn all_height_one_nus() -> parameters::testnet::ConfiguredActivationHeights {
     parameters::testnet::ConfiguredActivationHeights {
         before_overwinter: Some(1),
         overwinter: Some(1),
