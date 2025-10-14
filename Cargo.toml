@@ -5,7 +5,7 @@ resolver = "2"
 [workspace.dependencies]
 
 # content
-zebra-chain = "2.0"
+zebra-chain = { git = "https://github.com/zingolabs/zebra.git", tag = "2.5.0-zl.1" }
 
 # network
 http = "1.1.0"
