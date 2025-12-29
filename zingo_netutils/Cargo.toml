@@ -23,7 +23,7 @@ tonic.workspace = true
 tower.workspace = true
 webpki-roots = "0.25"
 
-zcash_client_backend = { version = "0.20", features = [
+zcash_client_backend = { version = "0.21", features = [
     "lightwalletd-tonic",
     "orchard",
     "transparent-inputs",

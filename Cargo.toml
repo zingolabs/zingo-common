@@ -1,5 +1,5 @@
 [workspace]
-members = ["zingo_common_components", "zingo_netutils" ]
+members = ["zingo_common_components", "zingo_netutils"]
 resolver = "2"
 
 [workspace.dependencies]
@@ -15,9 +15,7 @@ hyper = { version = "1", features = ["full"] }
 hyper-rustls = { version = "0.27", features = ["http2"] }
 rustls-pemfile = "2"
 tokio-rustls = "0.26"
-tonic = { version = "0.13", features = [
-    "tls-webpki-roots",
-] }
+tonic = { version = "0.14.2", features = ["tls-webpki-roots"] }
 tower = { version = "0.5" }
 webpki-roots = "0.25"
 
