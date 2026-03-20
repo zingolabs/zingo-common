@@ -24,6 +24,7 @@ zcash_client_backend = { workspace = true, features = [
     "lightwalletd-tonic",
     "tor",
 ] }
+futures-core = "0.3.32"
 
 [dev-dependencies]
 rustls-pemfile.workspace = true

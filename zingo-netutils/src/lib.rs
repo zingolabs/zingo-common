@@ -4,60 +4,25 @@
 //! chain indexer, and [`GrpcIndexerClient`], a concrete implementation that
 //! connects to a lightwalletd-compatible server via gRPC.
 
+pub mod types;
+
 use std::future::Future;
 use std::time::Duration;
 
+use futures_core::Stream;
+use futures_core::stream::BoxStream;
 use tonic::Request;
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
-use zcash_client_backend::proto::service::{
-    BlockId, ChainSpec, Empty, LightdInfo, RawTransaction, TreeState,
-    compact_tx_streamer_client::CompactTxStreamerClient,
+use zcash_client_backend::proto::service::compact_tx_streamer_client::CompactTxStreamerClient;
+use zcash_client_backend::proto::service::{BlockId, ChainSpec, Empty};
+
+use crate::types::{
+    Address, AddressList, AddressUtxo, Balance, BlockRange, BlockRef, CompactBlock, CompactTx,
+    GetAddressUtxosRequest, GetSubtreeRootsRequest, MempoolTxRequest, PingResponse, RawTransaction,
+    ServerInfo, SubtreeRoot, TransparentAddressBlockFilter, TreeState, TxFilter,
 };
 
 const DEFAULT_GRPC_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// Indexer server metadata.
-///
-/// This intentionally avoids exposing protobuf-generated types in the public
-/// trait boundary.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ServerInfo {
-    pub chain_name: String,
-    pub vendor: String,
-    pub version: String,
-    pub block_height: u64,
-    pub sapling_activation_height: u64,
-    pub consensus_branch_id: String,
-}
-
-impl From<LightdInfo> for ServerInfo {
-    fn from(value: LightdInfo) -> Self {
-        Self {
-            chain_name: value.chain_name,
-            vendor: value.vendor,
-            version: value.version,
-            block_height: value.block_height,
-            sapling_activation_height: value.sapling_activation_height,
-            consensus_branch_id: value.consensus_branch_id,
-        }
-    }
-}
-
-/// A  block identifier.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BlockRef {
-    pub height: u64,
-    pub hash: Vec<u8>,
-}
-
-impl From<BlockId> for BlockRef {
-    fn from(value: BlockId) -> Self {
-        Self {
-            height: value.height,
-            hash: value.hash,
-        }
-    }
-}
 
 /// The successful result of transaction submission.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -155,22 +120,205 @@ impl Default for CallTimeouts {
 
 /// Trait for communicating with a Zcash chain indexer.
 ///
-/// This trait exposes crate-local semantic types rather than protobuf-generated
-/// transport types, which keeps the rest of the codebase decoupled from the
-/// wire format and makes mocking/testing easier.
+/// This trait mirrors the canonical `CompactTxStreamer` service surface while
+/// exposing crate-local semantic types instead of protobuf-generated transport
+/// types. That keeps the rest of the codebase decoupled from the wire format
+/// and makes mocking and testing easier.
 pub trait IndexerClient {
-    fn get_info(&self) -> impl Future<Output = Result<ServerInfo, IndexerClientError>>;
-    fn get_latest_block(&self) -> impl Future<Output = Result<BlockRef, IndexerClientError>>;
+    /// The error type returned by this client.
+    type Error: std::error::Error + Send + Sync + 'static;
+
+    /// Stream of compact blocks.
+    type BlockStream: Stream<Item = Result<CompactBlock, Self::Error>>;
+
+    /// Stream of full raw transactions.
+    type RawTransactionStream: Stream<Item = Result<RawTransaction, Self::Error>>;
+
+    /// Stream of compact transactions.
+    type CompactTxStream: Stream<Item = Result<CompactTx, Self::Error>>;
+
+    /// Stream of subtree roots for a note commitment tree.
+    type SubtreeRootStream: Stream<Item = Result<SubtreeRoot, Self::Error>>;
+
+    /// Stream of transparent UTXOs.
+    type AddressUtxoStream: Stream<Item = Result<AddressUtxo, Self::Error>>;
+
+    /// Returns the block identifier of the block at the tip of the best chain.
+    fn get_latest_block(&self) -> impl Future<Output = Result<BlockRef, Self::Error>>;
+
+    /// Returns information about this lightwalletd instance and the state of
+    /// the blockchain.
+    fn get_lightd_info(&self) -> impl Future<Output = Result<ServerInfo, Self::Error>>;
+
+    /// Returns the compact block corresponding to the given block identifier.
+    ///
+    /// Compact blocks contain the minimum block and transaction data needed by a
+    /// wallet to detect relevant shielded activity, update witnesses, and, when
+    /// provided by the server, detect transparent UTXOs relevant to the wallet.
+    ///
+    /// Compact transactions may include transparent inputs (`vin`) and outputs
+    /// (`vout`) in addition to shielded data.
+    fn get_block(&self, block: BlockRef)
+    -> impl Future<Output = Result<CompactBlock, Self::Error>>;
+
+    /// Returns a compact block containing only shielded nullifier information.
+    ///
+    /// Transparent transaction data, Sapling outputs, full Orchard action
+    /// data, and commitment tree sizes are not included.
+    ///
+    /// Deprecated in the protocol; prefer [`Self::get_block_range`] with the
+    /// appropriate pool filters.
+    #[deprecated(note = "Protocol-deprecated; prefer get_block_range with pool filters")]
+    fn get_block_nullifiers(
+        &self,
+        block: BlockRef,
+    ) -> impl Future<Output = Result<CompactBlock, Self::Error>>;
+
+    /// Returns a stream of consecutive compact blocks in the specified range.
+    ///
+    /// The range is inclusive of `range.end`. If `range.start <= range.end`,
+    /// blocks are returned in increasing height order; otherwise they are
+    /// returned in decreasing height order.
+    ///
+    /// Upstream protocol notes that if no pool types are specified, servers
+    /// should default to the legacy behavior of returning only data relevant
+    /// to the shielded Sapling and Orchard pools. Clients must verify server
+    /// support before requesting pruned and/or transparent data via pool
+    /// filters.
+    fn get_block_range(
+        &self,
+        range: BlockRange,
+    ) -> impl Future<Output = Result<Self::BlockStream, Self::Error>>;
+
+    /// Returns a stream of compact blocks containing only shielded nullifier
+    /// information.
+    ///
+    /// Transparent transaction data, Sapling outputs, full Orchard action
+    /// data, and commitment tree sizes are not included. Implementations must
+    /// ignore any transparent pool type in the request.
+    ///
+    /// Deprecated in the protocol; prefer [`Self::get_block_range`] with the
+    /// appropriate pool filters.
+    #[deprecated(note = "Protocol-deprecated; prefer get_block_range with pool filters")]
+    fn get_block_range_nullifiers(
+        &self,
+        range: BlockRange,
+    ) -> impl Future<Output = Result<Self::BlockStream, Self::Error>>;
+
+    /// Returns the requested full, non-compact transaction.
+    ///
+    /// In the upstream protocol, this corresponds to the full transaction as
+    /// returned by `zcashd`.
+    fn get_transaction(
+        &self,
+        tx_filter: TxFilter,
+    ) -> impl Future<Output = Result<RawTransaction, Self::Error>>;
+
+    /// Submits the given transaction to the Zcash network.
     fn send_transaction(
         &self,
-        tx_bytes: &[u8],
-    ) -> impl Future<Output = Result<SentTransaction, IndexerClientError>>;
+        tx: &[u8],
+    ) -> impl Future<Output = Result<SentTransaction, Self::Error>>;
+
+    /// Returns full transactions that match the given transparent address
+    /// filter.
+    ///
+    /// Despite its historical name, the upstream RPC returns complete raw
+    /// transactions, not transaction IDs.
+    ///
+    /// Deprecated in the protocol; prefer
+    /// [`Self::get_taddress_transactions`].
+    #[deprecated(note = "Protocol-deprecated; use get_taddress_transactions")]
+    fn get_taddress_txids(
+        &self,
+        filter: TransparentAddressBlockFilter,
+    ) -> impl Future<Output = Result<Self::RawTransactionStream, Self::Error>>;
+
+    /// Returns the transactions corresponding to the given transparent address
+    /// within the specified block range.
+    ///
+    /// Mempool transactions are not included.
+    fn get_taddress_transactions(
+        &self,
+        filter: TransparentAddressBlockFilter,
+    ) -> impl Future<Output = Result<Self::RawTransactionStream, Self::Error>>;
+
+    /// Returns the balance for the given set of transparent addresses.
+    fn get_taddress_balance(
+        &self,
+        addresses: AddressList,
+    ) -> impl Future<Output = Result<Balance, Self::Error>>;
+
+    /// Returns the balance for a streamed set of transparent addresses.
+    fn get_taddress_balance_stream(
+        &self,
+        addresses: impl Stream<Item = Address>,
+    ) -> impl Future<Output = Result<Balance, Self::Error>>;
+
+    /// Returns a stream of compact transactions currently in the mempool.
+    ///
+    /// Results may be a few seconds out of date. If the excluded txid suffix
+    /// list is empty, all transactions are returned; otherwise all
+    /// non-excluded transactions are returned. Suffixes may be shortened to
+    /// reduce bandwidth. If multiple mempool transactions match a given
+    /// suffix, none of them are excluded.
+    fn get_mempool_tx(
+        &self,
+        request: MempoolTxRequest,
+    ) -> impl Future<Output = Result<Self::CompactTxStream, Self::Error>>;
+
+    /// Returns a stream of current mempool transactions.
+    ///
+    /// The upstream server keeps the stream open while mempool transactions
+    /// are available, and closes it when a new block is mined.
+    fn get_mempool_stream(
+        &self,
+    ) -> impl Future<Output = Result<Self::RawTransactionStream, Self::Error>>;
+
+    /// Returns the note commitment tree state corresponding to the given
+    /// block.
+    ///
+    /// This is derived from the Zcash `z_gettreestate` RPC. The block may be
+    /// specified by either height or hash, though upstream notes that support
+    /// for selection by hash is not mandatory across all methods.
     fn get_tree_state(
         &self,
-        height: u64,
-    ) -> impl Future<Output = Result<TreeState, IndexerClientError>>;
-}
+        block: BlockRef,
+    ) -> impl Future<Output = Result<TreeState, Self::Error>>;
 
+    /// Returns the note commitment tree state at the tip of the best chain.
+    fn get_latest_tree_state(&self) -> impl Future<Output = Result<TreeState, Self::Error>>;
+
+    /// Returns a stream of subtree roots for the specified shielded protocol.
+    ///
+    /// The upstream protocol defines this in terms of Sapling or Orchard note
+    /// commitment tree subtrees.
+    fn get_subtree_roots(
+        &self,
+        request: GetSubtreeRootsRequest,
+    ) -> impl Future<Output = Result<Self::SubtreeRootStream, Self::Error>>;
+
+    /// Returns the transparent UTXOs matching the given request.
+    ///
+    /// Upstream results are sorted by height, which makes it easy to issue a
+    /// follow-up request that continues where the previous one left off.
+    fn get_address_utxos(
+        &self,
+        request: GetAddressUtxosRequest,
+    ) -> impl Future<Output = Result<Vec<AddressUtxo>, Self::Error>>;
+
+    /// Returns a stream of transparent UTXOs matching the given request.
+    fn get_address_utxos_stream(
+        &self,
+        request: GetAddressUtxosRequest,
+    ) -> impl Future<Output = Result<Self::AddressUtxoStream, Self::Error>>;
+
+    /// Testing-only RPC used to simulate delay and observe concurrency.
+    ///
+    /// On upstream `lightwalletd`, this requires `--ping-very-insecure` and
+    /// should not be enabled in production.
+    fn ping(&self, delay: Duration) -> impl Future<Output = Result<PingResponse, Self::Error>>;
+}
 /// gRPC-backed [`IndexerClient`] that connects to a lightwalletd-compatible
 /// server.
 #[derive(Clone)]
@@ -243,7 +391,15 @@ impl GrpcIndexerClient {
 }
 
 impl IndexerClient for GrpcIndexerClient {
-    async fn get_info(&self) -> Result<ServerInfo, IndexerClientError> {
+    type Error = IndexerClientError;
+
+    type BlockStream = BoxStream<'static, Result<CompactBlock, Self::Error>>;
+    type RawTransactionStream = BoxStream<'static, Result<RawTransaction, Self::Error>>;
+    type CompactTxStream = BoxStream<'static, Result<CompactTx, Self::Error>>;
+    type SubtreeRootStream = BoxStream<'static, Result<SubtreeRoot, Self::Error>>;
+    type AddressUtxoStream = BoxStream<'static, Result<AddressUtxo, Self::Error>>;
+
+    async fn get_lightd_info(&self) -> Result<ServerInfo, IndexerClientError> {
         let mut client = self.client();
         let mut request = Request::new(Empty {});
         request.set_timeout(self.call_timeouts.get_info);
@@ -264,7 +420,7 @@ impl IndexerClient for GrpcIndexerClient {
         tx_bytes: &[u8],
     ) -> Result<SentTransaction, IndexerClientError> {
         let mut client = self.client();
-        let mut request = Request::new(RawTransaction {
+        let mut request = Request::new(zcash_client_backend::proto::service::RawTransaction {
             data: tx_bytes.to_vec(),
             height: 0,
         });
@@ -286,16 +442,105 @@ impl IndexerClient for GrpcIndexerClient {
         }
     }
 
-    async fn get_tree_state(&self, height: u64) -> Result<TreeState, IndexerClientError> {
+    async fn get_tree_state(&self, height: BlockRef) -> Result<TreeState, IndexerClientError> {
         let mut client = self.client();
-        let mut request = Request::new(BlockId {
-            height,
-            hash: vec![],
-        });
+        let mut request: Request<BlockId> = Request::new(height.into());
         request.set_timeout(self.call_timeouts.get_tree_state);
 
         let response = client.get_tree_state(request).await?;
-        Ok(response.into_inner())
+        Ok(response.into_inner().into())
+    }
+
+    async fn get_block(&self, block: BlockRef) -> Result<CompactBlock, Self::Error> {
+        let mut request: Request<BlockId> = Request::new(block.into());
+        request.set_timeout(self.call_timeouts.get_tree_state);
+
+        let response = self.client().get_block(request).await?;
+        Ok(response.into_inner().into())
+    }
+
+    fn get_block_nullifiers(&self, block: BlockRef) -> Result<CompactBlock, Self::Error> {
+        todo!()
+    }
+
+    fn get_block_range(&self, range: BlockRange) -> Result<Self::BlockStream, Self::Error> {
+        todo!()
+    }
+
+    fn get_block_range_nullifiers(
+        &self,
+        range: BlockRange,
+    ) -> Result<Self::BlockStream, Self::Error> {
+        todo!()
+    }
+
+    fn get_transaction(&self, tx_filter: TxFilter) -> Result<RawTransaction, Self::Error> {
+        todo!()
+    }
+
+    fn get_taddress_txids(
+        &self,
+        filter: TransparentAddressBlockFilter,
+    ) -> Result<Self::RawTransactionStream, Self::Error> {
+        todo!()
+    }
+
+    fn get_taddress_transactions(
+        &self,
+        filter: TransparentAddressBlockFilter,
+    ) -> Result<Self::RawTransactionStream, Self::Error> {
+        todo!()
+    }
+
+    fn get_taddress_balance(&self, addresses: AddressList) -> Result<Balance, Self::Error> {
+        todo!()
+    }
+
+    fn get_taddress_balance_stream(
+        &self,
+        addresses: impl Stream<Item = Address>,
+    ) -> Result<Balance, Self::Error> {
+        todo!()
+    }
+
+    fn get_mempool_tx(
+        &self,
+        request: MempoolTxRequest,
+    ) -> Result<Self::CompactTxStream, Self::Error> {
+        todo!()
+    }
+
+    fn get_mempool_stream(&self) -> Result<Self::RawTransactionStream, Self::Error> {
+        todo!()
+    }
+
+    fn get_latest_tree_state(&self) -> Result<TreeState, Self::Error> {
+        todo!()
+    }
+
+    fn get_subtree_roots(
+        &self,
+        request: GetSubtreeRootsRequest,
+    ) -> Result<Self::SubtreeRootStream, Self::Error> {
+        todo!()
+    }
+
+    fn get_address_utxos(
+        &self,
+        request: GetAddressUtxosRequest,
+    ) -> Result<Vec<AddressUtxo>, Self::Error> {
+        todo!()
+    }
+
+    fn get_address_utxos_stream(
+        &self,
+        request: GetAddressUtxosRequest,
+    ) -> Result<Self::AddressUtxoStream, Self::Error> {
+        todo!()
+    }
+
+    fn ping(&self, delay: Duration) -> Result<PingResponse, Self::Error> {
+        todo!()
     }
 }
 
@@ -325,6 +570,7 @@ mod tests {
     use hyper_util::rt::TokioIo;
     use tokio::{net::TcpListener, sync::oneshot, time::timeout};
     use tokio_rustls::{TlsAcceptor, rustls};
+    use zcash_client_backend::proto::service::LightdInfo;
 
     use super::*;
 
@@ -380,6 +626,15 @@ mod tests {
                 block_height: 2_345_678,
                 sapling_activation_height: 419_200,
                 consensus_branch_id: "76b809bb".to_string(),
+                taddr_support: false,
+                git_commit: String::new(),
+                branch: String::new(),
+                build_date: String::new(),
+                build_user: String::new(),
+                estimated_height: 0,
+                zcashd_build: String::new(),
+                zcashd_subversion: String::new(),
+                donation_address: String::new()
             }
         );
     }
@@ -681,7 +936,7 @@ mod tests {
 
         let response = GrpcIndexerClient::new(uri)
             .expect("URI to be valid")
-            .get_info()
+            .get_lightd_info()
             .await
             .expect("to get info");
 

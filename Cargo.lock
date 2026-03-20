@@ -6620,6 +6620,7 @@ dependencies = [
 name = "zingo-netutils"
 version = "3.0.0"
 dependencies = [
+ "futures-core",
  "http",
  "http-body-util",
  "hyper",
