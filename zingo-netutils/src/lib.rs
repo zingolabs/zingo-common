@@ -1,7 +1,8 @@
 //! `zingo-netutils`
 //!
-//! This crate provides the [`Indexer`] trait for communicating with a Zcash chain indexer,
-//! and [`GrpcIndexer`], a concrete implementation that connects to a zainod server via gRPC.
+//! This crate provides the [`IndexerClient`] trait for communicating with a Zcash
+//! chain indexer, and [`GrpcIndexerClient`], a concrete implementation that
+//! connects to a lightwalletd-compatible server via gRPC.
 
 use std::future::Future;
 use std::time::Duration;
@@ -13,6 +14,58 @@ use zcash_client_backend::proto::service::{
     compact_tx_streamer_client::CompactTxStreamerClient,
 };
 
+const DEFAULT_GRPC_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Indexer server metadata.
+///
+/// This intentionally avoids exposing protobuf-generated types in the public
+/// trait boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerInfo {
+    pub chain_name: String,
+    pub vendor: String,
+    pub version: String,
+    pub block_height: u64,
+    pub sapling_activation_height: u64,
+    pub consensus_branch_id: String,
+}
+
+impl From<LightdInfo> for ServerInfo {
+    fn from(value: LightdInfo) -> Self {
+        Self {
+            chain_name: value.chain_name,
+            vendor: value.vendor,
+            version: value.version,
+            block_height: value.block_height,
+            sapling_activation_height: value.sapling_activation_height,
+            consensus_branch_id: value.consensus_branch_id,
+        }
+    }
+}
+
+/// A  block identifier.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockRef {
+    pub height: u64,
+    pub hash: Vec<u8>,
+}
+
+impl From<BlockId> for BlockRef {
+    fn from(value: BlockId) -> Self {
+        Self {
+            height: value.height,
+            hash: value.hash,
+        }
+    }
+}
+
+/// The successful result of transaction submission.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SentTransaction {
+    pub txid: String,
+}
+
+/// Error type for [`GrpcIndexerClient`] construction and transport setup.
 #[derive(Debug, thiserror::Error)]
 pub enum GetClientError {
     #[error("bad uri: invalid scheme")]
@@ -25,8 +78,24 @@ pub enum GetClientError {
     Transport(#[from] tonic::transport::Error),
 }
 
+/// Unified error type for indexer client operations.
+///
+/// The public trait uses one semantic error type rather than leaking per-RPC
+/// tonic/protobuf details into callers.
+#[derive(Debug, thiserror::Error)]
+pub enum IndexerClientError {
+    #[error(transparent)]
+    GetClient(#[from] GetClientError),
+
+    #[error("gRPC error: {0}")]
+    Grpc(#[from] tonic::Status),
+
+    #[error("send rejected: {0}")]
+    SendRejected(String),
+}
+
 fn client_tls_config() -> ClientTlsConfig {
-    // Allow self-signed certs in tests
+    // Allow self-signed certs in tests.
     #[cfg(test)]
     {
         ClientTlsConfig::new()
@@ -39,89 +108,87 @@ fn client_tls_config() -> ClientTlsConfig {
     ClientTlsConfig::new().with_webpki_roots()
 }
 
-const DEFAULT_GRPC_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// Error type for [`GrpcIndexer::get_info`].
-#[derive(Debug, thiserror::Error)]
-pub enum GetInfoError {
-    #[error(transparent)]
-    GetClientError(#[from] GetClientError),
-
-    #[error("gRPC error: {0}")]
-    GetLightdInfoError(#[from] tonic::Status),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CallTimeouts {
+    pub get_info: Duration,
+    pub get_latest_block: Duration,
+    pub send_transaction: Duration,
+    pub get_tree_state: Duration,
 }
 
-/// Error type for [`GrpcIndexer::get_latest_block`].
-#[derive(Debug, thiserror::Error)]
-pub enum GetLatestBlockError {
-    #[error(transparent)]
-    GetClientError(#[from] GetClientError),
+impl CallTimeouts {
+    pub const fn new(all: Duration) -> Self {
+        Self {
+            get_info: all,
+            get_latest_block: all,
+            send_transaction: all,
+            get_tree_state: all,
+        }
+    }
 
-    #[error("gRPC error: {0}")]
-    GetLatestBlockError(#[from] tonic::Status),
+    pub const fn with_get_info(mut self, timeout: Duration) -> Self {
+        self.get_info = timeout;
+        self
+    }
+
+    pub const fn with_get_latest_block(mut self, timeout: Duration) -> Self {
+        self.get_latest_block = timeout;
+        self
+    }
+
+    pub const fn with_send_transaction(mut self, timeout: Duration) -> Self {
+        self.send_transaction = timeout;
+        self
+    }
+
+    pub const fn with_get_tree_state(mut self, timeout: Duration) -> Self {
+        self.get_tree_state = timeout;
+        self
+    }
 }
 
-/// Error type for [`GrpcIndexer::send_transaction`].
-#[derive(Debug, thiserror::Error)]
-pub enum SendTransactionError {
-    #[error(transparent)]
-    GetClientError(#[from] GetClientError),
-
-    #[error("gRPC error: {0}")]
-    SendTransactionError(#[from] tonic::Status),
-
-    #[error("send rejected: {0}")]
-    SendRejected(String),
-}
-
-/// Error type for [`GrpcIndexer::get_trees`].
-#[derive(Debug, thiserror::Error)]
-pub enum GetTreesError {
-    #[error(transparent)]
-    GetClientError(#[from] GetClientError),
-
-    #[error("gRPC error: {0}")]
-    GetTreeStateError(#[from] tonic::Status),
+impl Default for CallTimeouts {
+    fn default() -> Self {
+        Self::new(DEFAULT_GRPC_TIMEOUT)
+    }
 }
 
 /// Trait for communicating with a Zcash chain indexer.
-pub trait Indexer {
-    type GetInfoError;
-    type GetLatestBlockError;
-    type SendTransactionError;
-    type GetTreesError;
-
-    fn get_info(&self) -> impl Future<Output = Result<LightdInfo, Self::GetInfoError>>;
-    fn get_latest_block(&self) -> impl Future<Output = Result<BlockId, Self::GetLatestBlockError>>;
+///
+/// This trait exposes crate-local semantic types rather than protobuf-generated
+/// transport types, which keeps the rest of the codebase decoupled from the
+/// wire format and makes mocking/testing easier.
+pub trait IndexerClient {
+    fn get_info(&self) -> impl Future<Output = Result<ServerInfo, IndexerClientError>>;
+    fn get_latest_block(&self) -> impl Future<Output = Result<BlockRef, IndexerClientError>>;
     fn send_transaction(
         &self,
-        tx_bytes: Box<[u8]>,
-    ) -> impl Future<Output = Result<String, Self::SendTransactionError>>;
-    fn get_trees(
+        tx_bytes: &[u8],
+    ) -> impl Future<Output = Result<SentTransaction, IndexerClientError>>;
+    fn get_tree_state(
         &self,
         height: u64,
-    ) -> impl Future<Output = Result<TreeState, Self::GetTreesError>>;
+    ) -> impl Future<Output = Result<TreeState, IndexerClientError>>;
 }
 
-/// gRPC-backed [`Indexer`] that connects to a lightwalletd server.
+/// gRPC-backed [`IndexerClient`] that connects to a lightwalletd-compatible
+/// server.
 #[derive(Clone)]
-pub struct GrpcIndexer {
+pub struct GrpcIndexerClient {
     uri: http::Uri,
-    scheme: String,
-    authority: http::uri::Authority,
-    endpoint: Endpoint,
+    channel: Channel,
+    call_timeouts: CallTimeouts,
 }
 
-impl std::fmt::Debug for GrpcIndexer {
+impl std::fmt::Debug for GrpcIndexerClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GrpcIndexer")
-            .field("scheme", &self.scheme)
-            .field("authority", &self.authority)
+        f.debug_struct("GrpcIndexerClient")
+            .field("uri", &self.uri)
             .finish_non_exhaustive()
     }
 }
 
-impl GrpcIndexer {
+impl GrpcIndexerClient {
     pub fn new(uri: http::Uri) -> Result<Self, GetClientError> {
         let scheme = uri
             .scheme_str()
@@ -130,102 +197,105 @@ impl GrpcIndexer {
         if scheme != "http" && scheme != "https" {
             return Err(GetClientError::InvalidScheme);
         }
-        let authority = uri
+
+        let _authority = uri
             .authority()
             .ok_or(GetClientError::InvalidAuthority)?
             .clone();
 
-        let endpoint = Endpoint::from_shared(uri.to_string())?.tcp_nodelay(true);
+        let endpoint = Endpoint::from_shared(uri.to_string())?
+            .tcp_nodelay(true)
+            .http2_keep_alive_interval(Duration::from_secs(30))
+            .keep_alive_timeout(Duration::from_secs(10));
+
         let endpoint = if scheme == "https" {
             endpoint.tls_config(client_tls_config())?
         } else {
             endpoint
         };
 
+        let channel = endpoint.connect_lazy();
+
         Ok(Self {
             uri,
-            scheme,
-            authority,
-            endpoint,
+            channel,
+            call_timeouts: CallTimeouts::default(),
         })
+    }
+
+    pub fn with_default_timeout(mut self, timeout: Duration) -> Self {
+        self.call_timeouts = CallTimeouts::new(timeout);
+        self
+    }
+
+    pub fn with_call_timeouts(mut self, call_timeouts: CallTimeouts) -> Self {
+        self.call_timeouts = call_timeouts;
+        self
     }
 
     pub fn uri(&self) -> &http::Uri {
         &self.uri
     }
 
-    /// Connect to the pre-configured endpoint and return a gRPC client.
-    pub async fn get_client(&self) -> Result<CompactTxStreamerClient<Channel>, GetClientError> {
-        let channel = self.endpoint.connect().await?;
-        Ok(CompactTxStreamerClient::new(channel))
+    fn client(&self) -> CompactTxStreamerClient<Channel> {
+        CompactTxStreamerClient::new(self.channel.clone())
     }
 }
 
-impl Indexer for GrpcIndexer {
-    type GetInfoError = GetInfoError;
-    type GetLatestBlockError = GetLatestBlockError;
-    type SendTransactionError = SendTransactionError;
-    type GetTreesError = GetTreesError;
-
-    async fn get_info(&self) -> Result<LightdInfo, GetInfoError> {
-        let mut client = self.get_client().await?;
+impl IndexerClient for GrpcIndexerClient {
+    async fn get_info(&self) -> Result<ServerInfo, IndexerClientError> {
+        let mut client = self.client();
         let mut request = Request::new(Empty {});
-        request.set_timeout(DEFAULT_GRPC_TIMEOUT);
+        request.set_timeout(self.call_timeouts.get_info);
         let response = client.get_lightd_info(request).await?;
-        Ok(response.into_inner())
+        Ok(response.into_inner().into())
     }
 
-    async fn get_latest_block(&self) -> Result<BlockId, GetLatestBlockError> {
-        let mut client = self.get_client().await?;
+    async fn get_latest_block(&self) -> Result<BlockRef, IndexerClientError> {
+        let mut client = self.client();
         let mut request = Request::new(ChainSpec {});
-        request.set_timeout(DEFAULT_GRPC_TIMEOUT);
+        request.set_timeout(self.call_timeouts.get_latest_block);
         let response = client.get_latest_block(request).await?;
-        Ok(response.into_inner())
+        Ok(response.into_inner().into())
     }
 
-    async fn send_transaction(&self, tx_bytes: Box<[u8]>) -> Result<String, SendTransactionError> {
-        let mut client = self.get_client().await?;
+    async fn send_transaction(
+        &self,
+        tx_bytes: &[u8],
+    ) -> Result<SentTransaction, IndexerClientError> {
+        let mut client = self.client();
         let mut request = Request::new(RawTransaction {
             data: tx_bytes.to_vec(),
             height: 0,
         });
-        request.set_timeout(DEFAULT_GRPC_TIMEOUT);
+        request.set_timeout(self.call_timeouts.send_transaction);
+
         let response = client.send_transaction(request).await?;
-        let sendresponse = response.into_inner();
-        if sendresponse.error_code == 0 {
-            let mut transaction_id = sendresponse.error_message;
-            if transaction_id.starts_with('\"') && transaction_id.ends_with('\"') {
-                transaction_id = transaction_id[1..transaction_id.len() - 1].to_string();
+        let send_response = response.into_inner();
+
+        if send_response.error_code == 0 {
+            let mut txid = send_response.error_message;
+            if txid.starts_with('"') && txid.ends_with('"') && txid.len() >= 2 {
+                txid = txid[1..txid.len() - 1].to_string();
             }
-            Ok(transaction_id)
+            Ok(SentTransaction { txid })
         } else {
-            Err(SendTransactionError::SendRejected(format!(
-                "{sendresponse:?}"
+            Err(IndexerClientError::SendRejected(format!(
+                "{send_response:?}"
             )))
         }
     }
 
-    async fn get_trees(&self, height: u64) -> Result<TreeState, GetTreesError> {
-        let mut client = self.get_client().await?;
-        let response = client
-            .get_tree_state(Request::new(BlockId {
-                height,
-                hash: vec![],
-            }))
-            .await?;
+    async fn get_tree_state(&self, height: u64) -> Result<TreeState, IndexerClientError> {
+        let mut client = self.client();
+        let mut request = Request::new(BlockId {
+            height,
+            hash: vec![],
+        });
+        request.set_timeout(self.call_timeouts.get_tree_state);
+
+        let response = client.get_tree_state(request).await?;
         Ok(response.into_inner())
-    }
-}
-
-#[cfg(test)]
-mod indexer_implementation {
-
-    mod get_info {
-        #[tokio::test]
-        async fn call_get_info() {
-            assert_eq!(1, 1);
-            //let grpc_index = GrpcIndexer::new();
-        }
     }
 }
 
@@ -237,7 +307,7 @@ mod tests {
     //! - TLS test asset sanity (`test-data/localhost.pem` + `.key`)
     //! - Rustls plumbing (adding a local cert to a root store)
     //! - Connector correctness (scheme validation, HTTP/2 expectations)
-    //! - URI rewrite behavior (no panics; returns structured errors)
+    //! - Public semantic type mapping (`LightdInfo -> ServerInfo`, `BlockId -> BlockRef`)
     //!
     //! Notes:
     //! - Some tests spin up an in-process TLS server and use aggressive timeouts to
@@ -262,7 +332,6 @@ mod tests {
 
     fn add_test_cert_to_roots(roots: &mut RootCertStore) {
         use tonic::transport::CertificateDer;
-        eprintln!("Adding test cert to roots");
 
         const TEST_PEMFILE_PATH: &str = "test-data/localhost.pem";
 
@@ -278,6 +347,59 @@ mod tests {
 
         let certs: Vec<CertificateDer<'_>> = certs_bytes.into_iter().collect();
         roots.add_parsable_certificates(certs);
+    }
+
+    #[test]
+    fn lightd_info_maps_to_server_info() {
+        let info = LightdInfo {
+            version: "1.2.3".to_string(),
+            vendor: "zingo".to_string(),
+            taddr_support: false,
+            chain_name: "main".to_string(),
+            sapling_activation_height: 419_200,
+            consensus_branch_id: "76b809bb".to_string(),
+            block_height: 2_345_678,
+            git_commit: String::new(),
+            branch: String::new(),
+            build_date: String::new(),
+            build_user: String::new(),
+            estimated_height: 0,
+            zcashd_build: String::new(),
+            zcashd_subversion: String::new(),
+            donation_address: String::new(),
+        };
+
+        let mapped = ServerInfo::from(info);
+
+        assert_eq!(
+            mapped,
+            ServerInfo {
+                chain_name: "main".to_string(),
+                vendor: "zingo".to_string(),
+                version: "1.2.3".to_string(),
+                block_height: 2_345_678,
+                sapling_activation_height: 419_200,
+                consensus_branch_id: "76b809bb".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn block_id_maps_to_block_ref() {
+        let block = BlockId {
+            height: 123,
+            hash: vec![1, 2, 3, 4],
+        };
+
+        let mapped = BlockRef::from(block);
+
+        assert_eq!(
+            mapped,
+            BlockRef {
+                height: 123,
+                hash: vec![1, 2, 3, 4],
+            }
+        );
     }
 
     /// Ensures the committed localhost test certificate exists and is parseable as X.509.
@@ -371,16 +493,9 @@ mod tests {
 
         std::sync::Arc::new(config)
     }
+
     /// Smoke test: adding the committed localhost cert to a rustls root store enables
     /// a client to complete a TLS handshake and perform an HTTP request.
-    ///
-    /// Implementation notes:
-    /// - Uses a local TLS server with the committed cert/key.
-    /// - Uses strict timeouts to prevent hangs under nextest.
-    /// - Explicitly drains the request body and disables keep-alive so that
-    ///   `serve_connection` terminates deterministically.
-    /// - Installs the rustls crypto provider to avoid provider
-    ///   selection panics in test binaries.
     #[tokio::test]
     async fn add_test_cert_to_roots_enables_tls_handshake() {
         use http_body_util::Full;
@@ -498,19 +613,15 @@ mod tests {
     #[test]
     fn rejects_non_http_schemes() {
         let uri: http::Uri = "ftp://example.com:1234".parse().unwrap();
-        let res = GrpcIndexer::new(uri);
+        let res = GrpcIndexerClient::new(uri);
 
         assert!(
             res.is_err(),
-            "expected GrpcIndexer::new() to reject non-http(s) schemes, but got Ok"
+            "expected GrpcIndexerClient::new() to reject non-http(s) schemes, but got Ok"
         );
     }
 
-    /// Demonstrates the HTTPS downgrade hazard: the underlying client can successfully
-    /// talk to an HTTP/1.1-only TLS server if the HTTPS branch does not enforce HTTP/2.
-    ///
-    /// This is intentionally written as a “should be HTTP/2” test so it fails until
-    /// the HTTPS client is constructed with `http2_only(true)`.
+    /// A gRPC (HTTP/2) client must not succeed against an HTTP/1.1-only TLS server.
     #[tokio::test]
     async fn https_connector_must_not_downgrade_to_http1() {
         use http_body_util::Full;
@@ -566,14 +677,14 @@ mod tests {
     #[tokio::test]
     async fn connects_to_public_mainnet_indexer_and_gets_info() {
         let endpoint = "https://zec.rocks:443".to_string();
-
         let uri: http::Uri = endpoint.parse().expect("bad mainnet indexer URI");
 
-        let response = GrpcIndexer::new(uri)
-            .expect("URI to be valid.")
+        let response = GrpcIndexerClient::new(uri)
+            .expect("URI to be valid")
             .get_info()
             .await
             .expect("to get info");
+
         assert!(
             !response.chain_name.is_empty(),
             "chain_name should not be empty"
