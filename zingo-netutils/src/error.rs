@@ -36,6 +36,45 @@ pub enum GetClientError {
 
     #[error(transparent)]
     Transport(#[from] tonic::transport::Error),
+
+    #[cfg(feature = "nym")]
+    #[error("SOCKS5 proxy error: {0}")]
+    SocksProxy(std::io::Error),
+
+    #[cfg(feature = "nym")]
+    #[error("failed to start Nym proxy: {0}")]
+    NymStart(Box<NymProxyError>),
+
+    #[cfg(feature = "nym")]
+    #[error(
+        "proxied request but no proxy configured — call with_nym() or with_socks_proxy() first"
+    )]
+    NoProxy,
+}
+
+/// Error from [`NymProxy`](super::NymProxy) lifecycle operations.
+#[cfg(feature = "nym")]
+#[derive(Debug, thiserror::Error)]
+pub enum NymProxyError {
+    /// Failed to build the Nym mixnet client.
+    #[error("failed to build Nym client: {0}")]
+    Build(Box<nym_sdk::Error>),
+
+    /// Failed to connect to the Nym mixnet.
+    #[error("failed to connect to Nym mixnet: {0}")]
+    Connect(Box<nym_sdk::Error>),
+
+    /// Failed to query the Nym API for service providers.
+    #[error("Nym API query failed: {0}")]
+    DiscoveryApi(String),
+
+    /// No public exit gateway could be discovered.
+    #[error("no public Nym exit gateway found")]
+    NoProvider,
+
+    /// End-to-end connectivity check through the SOCKS5 tunnel failed.
+    #[error("connectivity check failed: {0}")]
+    ConnectivityCheck(String),
 }
 
 #[cfg(test)]
@@ -46,6 +85,17 @@ mod get_client_error_tests {
     fn transport_from_conversion() {
         // Verify the From impl exists at compile time.
         let _: fn(tonic::transport::Error) -> GetClientError = GetClientError::from;
+    }
+
+    #[cfg(feature = "nym")]
+    #[test]
+    fn socks_proxy_error_display() {
+        let e = GetClientError::SocksProxy(std::io::Error::new(
+            std::io::ErrorKind::ConnectionRefused,
+            "connection refused",
+        ));
+        assert!(e.to_string().contains("SOCKS5 proxy error"));
+        assert!(e.to_string().contains("connection refused"));
     }
 }
 

@@ -25,7 +25,13 @@ async fn get_lightd_info(c: &mut CompactTxStreamerClient<Channel>, i: &GrpcIndex
         .await
         .unwrap()
         .into_inner();
-    let _t: LightdInfo = i.get_info().await.unwrap();
+    let _t: LightdInfo = i
+        .get_info(
+            #[cfg(feature = "nym")]
+            false,
+        )
+        .await
+        .unwrap();
 }
 
 // Proto: GetLatestBlock(ChainSpec) -> BlockID
@@ -36,7 +42,13 @@ async fn get_latest_block(c: &mut CompactTxStreamerClient<Channel>, i: &GrpcInde
         .await
         .unwrap()
         .into_inner();
-    let _t: BlockId = i.get_latest_block().await.unwrap();
+    let _t: BlockId = i
+        .get_latest_block(
+            #[cfg(feature = "nym")]
+            false,
+        )
+        .await
+        .unwrap();
 }
 
 // Proto: SendTransaction(RawTransaction) -> SendResponse
@@ -50,7 +62,14 @@ async fn send_transaction(c: &mut CompactTxStreamerClient<Channel>, i: &GrpcInde
         .await
         .unwrap()
         .into_inner();
-    let _t: String = i.send_transaction(vec![].into_boxed_slice()).await.unwrap();
+    let _t: String = i
+        .send_transaction(
+            vec![].into_boxed_slice(),
+            #[cfg(feature = "nym")]
+            false,
+        )
+        .await
+        .unwrap();
 }
 
 // Proto: GetTreeState(BlockID) -> TreeState
@@ -65,7 +84,14 @@ async fn get_tree_state(c: &mut CompactTxStreamerClient<Channel>, i: &GrpcIndexe
         .await
         .unwrap()
         .into_inner();
-    let _t: TreeState = i.get_tree_state(id).await.unwrap();
+    let _t: TreeState = i
+        .get_tree_state(
+            id,
+            #[cfg(feature = "nym")]
+            false,
+        )
+        .await
+        .unwrap();
 }
 
 // Proto: GetBlock(BlockID) -> CompactBlock
@@ -80,7 +106,14 @@ async fn get_block(c: &mut CompactTxStreamerClient<Channel>, i: &GrpcIndexer) {
         .await
         .unwrap()
         .into_inner();
-    let _t: CompactBlock = i.get_block(id).await.unwrap();
+    let _t: CompactBlock = i
+        .get_block(
+            id,
+            #[cfg(feature = "nym")]
+            false,
+        )
+        .await
+        .unwrap();
 }
 
 // Proto: GetBlockNullifiers(BlockID) -> CompactBlock  [deprecated]
@@ -96,7 +129,14 @@ async fn get_block_nullifiers(c: &mut CompactTxStreamerClient<Channel>, i: &Grpc
         .await
         .unwrap()
         .into_inner();
-    let _t: CompactBlock = i.get_block_nullifiers(id).await.unwrap();
+    let _t: CompactBlock = i
+        .get_block_nullifiers(
+            id,
+            #[cfg(feature = "nym")]
+            false,
+        )
+        .await
+        .unwrap();
 }
 
 // Proto: GetBlockRange(BlockRange) -> stream CompactBlock
@@ -112,7 +152,14 @@ async fn get_block_range(c: &mut CompactTxStreamerClient<Channel>, i: &GrpcIndex
         .await
         .unwrap()
         .into_inner();
-    let _t: tonic::Streaming<CompactBlock> = i.get_block_range(range).await.unwrap();
+    let _t: tonic::Streaming<CompactBlock> = i
+        .get_block_range(
+            range,
+            #[cfg(feature = "nym")]
+            false,
+        )
+        .await
+        .unwrap();
 }
 
 // Proto: GetBlockRangeNullifiers(BlockRange) -> stream CompactBlock  [deprecated]
@@ -129,7 +176,14 @@ async fn get_block_range_nullifiers(c: &mut CompactTxStreamerClient<Channel>, i:
         .await
         .unwrap()
         .into_inner();
-    let _t: tonic::Streaming<CompactBlock> = i.get_block_range_nullifiers(range).await.unwrap();
+    let _t: tonic::Streaming<CompactBlock> = i
+        .get_block_range_nullifiers(
+            range,
+            #[cfg(feature = "nym")]
+            false,
+        )
+        .await
+        .unwrap();
 }
 
 // Proto: GetTransaction(TxFilter) -> RawTransaction
@@ -145,7 +199,14 @@ async fn get_transaction(c: &mut CompactTxStreamerClient<Channel>, i: &GrpcIndex
         .await
         .unwrap()
         .into_inner();
-    let _t: RawTransaction = i.get_transaction(filter).await.unwrap();
+    let _t: RawTransaction = i
+        .get_transaction(
+            filter,
+            #[cfg(feature = "nym")]
+            false,
+        )
+        .await
+        .unwrap();
 }
 
 // Proto: GetMempoolTx(GetMempoolTxRequest) -> stream CompactTx
@@ -160,7 +221,14 @@ async fn get_mempool_tx(c: &mut CompactTxStreamerClient<Channel>, i: &GrpcIndexe
         .await
         .unwrap()
         .into_inner();
-    let _t: tonic::Streaming<CompactTx> = i.get_mempool_tx(req).await.unwrap();
+    let _t: tonic::Streaming<CompactTx> = i
+        .get_mempool_tx(
+            req,
+            #[cfg(feature = "nym")]
+            false,
+        )
+        .await
+        .unwrap();
 }
 
 // Proto: GetMempoolStream(Empty) -> stream RawTransaction
@@ -171,7 +239,13 @@ async fn get_mempool_stream(c: &mut CompactTxStreamerClient<Channel>, i: &GrpcIn
         .await
         .unwrap()
         .into_inner();
-    let _t: tonic::Streaming<RawTransaction> = i.get_mempool_stream().await.unwrap();
+    let _t: tonic::Streaming<RawTransaction> = i
+        .get_mempool_stream(
+            #[cfg(feature = "nym")]
+            false,
+        )
+        .await
+        .unwrap();
 }
 
 // Proto: GetLatestTreeState(Empty) -> TreeState
@@ -182,7 +256,13 @@ async fn get_latest_tree_state(c: &mut CompactTxStreamerClient<Channel>, i: &Grp
         .await
         .unwrap()
         .into_inner();
-    let _t: TreeState = i.get_latest_tree_state().await.unwrap();
+    let _t: TreeState = i
+        .get_latest_tree_state(
+            #[cfg(feature = "nym")]
+            false,
+        )
+        .await
+        .unwrap();
 }
 
 // Proto: GetSubtreeRoots(GetSubtreeRootsArg) -> stream SubtreeRoot
@@ -198,7 +278,14 @@ async fn get_subtree_roots(c: &mut CompactTxStreamerClient<Channel>, i: &GrpcInd
         .await
         .unwrap()
         .into_inner();
-    let _t: tonic::Streaming<SubtreeRoot> = i.get_subtree_roots(arg).await.unwrap();
+    let _t: tonic::Streaming<SubtreeRoot> = i
+        .get_subtree_roots(
+            arg,
+            #[cfg(feature = "nym")]
+            false,
+        )
+        .await
+        .unwrap();
 }
 
 // Proto: Ping(Duration) -> PingResponse
@@ -207,7 +294,14 @@ async fn get_subtree_roots(c: &mut CompactTxStreamerClient<Channel>, i: &GrpcInd
 async fn ping(c: &mut CompactTxStreamerClient<Channel>, i: &GrpcIndexer) {
     let dur = ProtoDuration { interval_us: 0 };
     let _p: PingResponse = c.ping(Request::new(dur)).await.unwrap().into_inner();
-    let _t: PingResponse = i.ping(dur).await.unwrap();
+    let _t: PingResponse = i
+        .ping(
+            dur,
+            #[cfg(feature = "nym")]
+            false,
+        )
+        .await
+        .unwrap();
 }
 
 // ── TransparentIndexer trait ────────────────────────────────────────
@@ -233,7 +327,14 @@ mod transparent {
             .await
             .unwrap()
             .into_inner();
-        let _t: tonic::Streaming<RawTransaction> = i.get_taddress_txids(f).await.unwrap();
+        let _t: tonic::Streaming<RawTransaction> = i
+            .get_taddress_txids(
+                f,
+                #[cfg(feature = "nym")]
+                false,
+            )
+            .await
+            .unwrap();
     }
 
     // Proto: GetTaddressTransactions(TransparentAddressBlockFilter) -> stream RawTransaction
@@ -248,7 +349,14 @@ mod transparent {
             .await
             .unwrap()
             .into_inner();
-        let _t: tonic::Streaming<RawTransaction> = i.get_taddress_transactions(f).await.unwrap();
+        let _t: tonic::Streaming<RawTransaction> = i
+            .get_taddress_transactions(
+                f,
+                #[cfg(feature = "nym")]
+                false,
+            )
+            .await
+            .unwrap();
     }
 
     // Proto: GetTaddressBalance(AddressList) -> Balance
@@ -260,7 +368,14 @@ mod transparent {
             .await
             .unwrap()
             .into_inner();
-        let _t: Balance = i.get_taddress_balance(addrs).await.unwrap();
+        let _t: Balance = i
+            .get_taddress_balance(
+                addrs,
+                #[cfg(feature = "nym")]
+                false,
+            )
+            .await
+            .unwrap();
     }
 
     // Proto: GetTaddressBalanceStream(stream Address) -> Balance
@@ -277,7 +392,14 @@ mod transparent {
             .await
             .unwrap()
             .into_inner();
-        let _t: Balance = i.get_taddress_balance_stream(addrs).await.unwrap();
+        let _t: Balance = i
+            .get_taddress_balance_stream(
+                addrs,
+                #[cfg(feature = "nym")]
+                false,
+            )
+            .await
+            .unwrap();
     }
 
     // Proto: GetAddressUtxos(GetAddressUtxosArg) -> GetAddressUtxosReplyList
@@ -293,7 +415,14 @@ mod transparent {
             .await
             .unwrap()
             .into_inner();
-        let _t: GetAddressUtxosReplyList = i.get_address_utxos(arg).await.unwrap();
+        let _t: GetAddressUtxosReplyList = i
+            .get_address_utxos(
+                arg,
+                #[cfg(feature = "nym")]
+                false,
+            )
+            .await
+            .unwrap();
     }
 
     // Proto: GetAddressUtxosStream(GetAddressUtxosArg) -> stream GetAddressUtxosReply
@@ -309,7 +438,13 @@ mod transparent {
             .await
             .unwrap()
             .into_inner();
-        let _t: tonic::Streaming<GetAddressUtxosReply> =
-            i.get_address_utxos_stream(arg).await.unwrap();
+        let _t: tonic::Streaming<GetAddressUtxosReply> = i
+            .get_address_utxos_stream(
+                arg,
+                #[cfg(feature = "nym")]
+                false,
+            )
+            .await
+            .unwrap();
     }
 }
