@@ -1,5 +1,5 @@
 [workspace]
-members = ["zingo_common_components", "zingo-netutils"]
+members = ["zingo_common_components", "zingo-netutils", "grpc-echo-server"]
 resolver = "2"
 package.edition = "2024"
 

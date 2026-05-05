@@ -480,7 +480,7 @@ impl GrpcIndexer {
     #[cfg(feature = "nym")]
     pub async fn with_nym(mut self) -> Result<Self, GetClientError> {
         const MAX_WITH_NYM_ATTEMPTS: usize = 5;
-        const PROBE_TIMEOUT: Duration = Duration::from_secs(15);
+        const PROBE_TIMEOUT: Duration = DEFAULT_NYM_GRPC_TIMEOUT;
 
         let mut last_err = None;
         for _attempt in 0..MAX_WITH_NYM_ATTEMPTS {
@@ -579,14 +579,14 @@ impl GrpcIndexer {
     /// Return the effective target port for the configured URI.
     ///
     /// Uses the explicit authority port when present. Otherwise, falls
-    /// back to the scheme default: `443` for `https` and `80` for
+    /// back to the scheme default: `8137` for `https` and `80` for
     /// `http`.
     #[cfg(feature = "nym")]
     fn default_target_port(&self) -> u16 {
         self.authority
             .port_u16()
             .unwrap_or_else(|| match self.scheme.as_str() {
-                "https" => 443,
+                "https" => 8137,
                 "http" => 80,
                 _ => unreachable!("GrpcIndexer::new validates the scheme"),
             })
@@ -671,35 +671,28 @@ impl GrpcIndexer {
     #[cfg(feature = "nym")]
     async fn connect_channel(&self, proxied: bool) -> Result<Channel, GetClientError> {
         if proxied {
-            // Resolve the proxy address: prefer the live address from an
-            // owned NymProxy (which may change after reconnect) over the
-            // static `socks_proxy` string (set by `with_socks_proxy()`).
-            let proxy_addr = if let Some(ref nym_proxy) = self.nym_proxy {
-                nym_proxy.lock().await.socks5_addr()
-            } else if let Some(ref addr) = self.socks_proxy {
-                addr.clone()
-            } else {
-                return Err(GetClientError::NoProxy);
-            };
-
-            match self.connect_channel_via_socks_proxy(&proxy_addr).await {
-                Ok(channel) => Ok(channel),
-                Err(first_error) => {
-                    // Only retry if we own the proxy and can reconnect.
-                    if let Some(ref nym_proxy) = self.nym_proxy {
-                        let mut guard = nym_proxy.lock().await;
+            if let Some(ref nym_proxy) = self.nym_proxy {
+                // Hold the mutex for the full connection. The Nym Socks5MixnetClient
+                // panics in background cleanup tasks when two concurrent SOCKS5
+                // connections close at the same time (TrySendError::Disconnected).
+                // Serializing here prevents concurrent use of the same client instance.
+                let mut guard = nym_proxy.lock().await;
+                let proxy_addr = guard.socks5_addr();
+                match self.connect_channel_via_socks_proxy(&proxy_addr).await {
+                    Ok(channel) => Ok(channel),
+                    Err(_) => {
                         guard
                             .reconnect()
                             .await
                             .map_err(|e| GetClientError::NymStart(Box::new(e)))?;
-                        // Read the new address after reconnect (port may have changed).
                         let new_addr = guard.socks5_addr();
-                        drop(guard);
                         self.connect_channel_via_socks_proxy(&new_addr).await
-                    } else {
-                        Err(first_error)
                     }
                 }
+            } else if let Some(ref addr) = self.socks_proxy {
+                self.connect_channel_via_socks_proxy(addr).await
+            } else {
+                Err(GetClientError::NoProxy)
             }
         } else {
             Ok(self.endpoint.connect().await?)
@@ -1431,7 +1424,8 @@ mod tests {
     #[tokio::test]
     async fn connects_to_public_mainnet_indexer_and_gets_info() {
         ensure_crypto_provider();
-        let endpoint = "https://zec.rocks:443".to_string();
+        let endpoint =
+            "https://zec.rocks:443".to_string();
 
         let uri: http::Uri = endpoint.parse().expect("bad mainnet indexer URI");
 
@@ -1473,7 +1467,10 @@ mod tests {
         ensure_crypto_provider();
         use tokio_stream::StreamExt;
 
-        let uri: http::Uri = "https://zec.rocks:443".parse().unwrap();
+        let uri: http::Uri =
+            "https://zec.rocks:443"
+                .parse()
+                .unwrap();
         let indexer = GrpcIndexer::new(uri).expect("valid URI");
 
         let tip = indexer
@@ -1536,6 +1533,8 @@ mod tests {
     #[cfg(feature = "nym")]
     async fn nym_test_indexer() -> GrpcIndexer {
         ensure_crypto_provider();
+        // Must use a publicly routable server — Nym exit gateways are on the
+        // public internet and cannot reach Tailscale (*.ts.net) addresses.
         let uri: http::Uri = "https://zec.rocks:443".parse().unwrap();
         GrpcIndexer::new(uri)
             .expect("valid URI")
@@ -1550,7 +1549,10 @@ mod tests {
     #[tokio::test]
     async fn proxied_false_bypasses_proxy() {
         ensure_crypto_provider();
-        let uri: http::Uri = "https://zec.rocks:443".parse().unwrap();
+        let uri: http::Uri =
+            "https://zec.rocks:443"
+                .parse()
+                .unwrap();
         let indexer = GrpcIndexer::new(uri).expect("valid URI");
 
         let info = indexer.get_info(false).await.expect("get_info(false)");
@@ -1570,7 +1572,10 @@ mod tests {
     #[tokio::test]
     async fn proxied_true_without_proxy_errors() {
         ensure_crypto_provider();
-        let uri: http::Uri = "https://zec.rocks:443".parse().unwrap();
+        let uri: http::Uri =
+            "https://zec.rocks:443"
+                .parse()
+                .unwrap();
         let indexer = GrpcIndexer::new(uri).expect("valid URI");
 
         let err = indexer
@@ -1600,12 +1605,14 @@ mod tests {
                 Err(e) => panic!("NymProxy::start failed after 5 attempts: {e}"),
             };
             let addr = p.socks5_addr();
+            // Must use a publicly routable server — Nym exit gateways are on the
+            // public internet and cannot reach Tailscale (*.ts.net) addresses.
             let uri: http::Uri = "https://zec.rocks:443".parse().unwrap();
             let idx = GrpcIndexer::new(uri)
                 .expect("valid URI")
                 .with_socks_proxy(&addr);
 
-            match tokio::time::timeout(Duration::from_secs(15), idx.get_info(true)).await {
+            match tokio::time::timeout(Duration::from_secs(60), idx.get_info(true)).await {
                 Ok(Ok(info)) if info.block_height > 0 => {
                     proxy = Some(p);
                     indexer = Some(idx);
@@ -1691,6 +1698,89 @@ mod tests {
             count += 1;
         }
         assert!(count > 0, "expected at least one block");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Docker image 'grpc-echo-server'; build with: docker build -t grpc-echo-server -f grpc-echo-server/Dockerfile ."]
+    async fn echo_server_records_peer_address() {
+        // Start the container, publishing the internal 8137 port to an ephemeral host port.
+        let output = std::process::Command::new("docker")
+            .args(["run", "-d", "-p", "0:8137", "grpc-echo-server"])
+            .output()
+            .expect("failed to launch docker");
+        assert!(
+            output.status.success(),
+            "docker run failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let container_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        // RAII guard: removes the container when it drops out of scope.
+        struct ContainerGuard(String);
+        impl Drop for ContainerGuard {
+            fn drop(&mut self) {
+                let _ = std::process::Command::new("docker")
+                    .args(["rm", "-f", &self.0])
+                    .output();
+            }
+        }
+        let _guard = ContainerGuard(container_id.clone());
+
+        // Discover the host port Docker assigned.
+        let port_output = std::process::Command::new("docker")
+            .args(["port", &container_id, "8137"])
+            .output()
+            .expect("docker port failed");
+        let port_str = String::from_utf8_lossy(&port_output.stdout);
+        // Output is like "0.0.0.0:PORT\n" or "[::]:PORT\n"; take the last colon segment.
+        let port: u16 = port_str
+            .trim()
+            .rsplit(':')
+            .next()
+            .expect("no colon in docker port output")
+            .parse()
+            .expect("port is not a number");
+
+        let uri: http::Uri = format!("http://127.0.0.1:{port}")
+            .parse()
+            .expect("bad URI");
+
+        // Wait for the server to be ready (up to 10 attempts, 200ms apart).
+        let indexer = GrpcIndexer::new(uri).expect("URI to be valid");
+        let mut info = None;
+        for _ in 0..10 {
+            match indexer
+                .get_info(
+                    #[cfg(feature = "nym")]
+                    false,
+                )
+                .await
+            {
+                Ok(i) => {
+                    info = Some(i);
+                    break;
+                }
+                Err(_) => {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                }
+            }
+        }
+        let info = info.expect("server never became ready within 10 retries");
+
+        assert_eq!(info.chain_name, "echo", "unexpected chain_name");
+        assert!(
+            info.vendor.contains("peer="),
+            "vendor field should contain 'peer=', got: {:?}",
+            info.vendor
+        );
+
+        // Extract and print the peer address the server observed.
+        let peer = info
+            .vendor
+            .split("peer=")
+            .nth(1)
+            .unwrap_or("<not found>");
+        println!("Echo server observed client peer address: {peer}");
     }
 
     /// Verify that cloned indexers share the same Nym proxy.

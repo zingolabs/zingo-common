@@ -1,0 +1,16 @@
+[package]
+name = "grpc-echo-server"
+version = "0.1.0"
+edition.workspace = true
+
+[[bin]]
+name = "grpc-echo-server"
+path = "src/main.rs"
+
+[dependencies]
+lightwallet-protocol = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tokio-stream = { workspace = true }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

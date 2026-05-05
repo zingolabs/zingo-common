@@ -2253,6 +2253,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "grpc-echo-server"
+version = "0.1.0"
+dependencies = [
+ "lightwallet-protocol",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "h2"
 version = "0.3.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7623,6 +7635,7 @@ dependencies = [
  "bytes",
  "libc",
  "mio",
+ "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2 0.6.3",
