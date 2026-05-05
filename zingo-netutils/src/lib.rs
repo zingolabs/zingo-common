@@ -23,6 +23,7 @@
 //! | `globally-public-transparent` | [`TransparentIndexer`] sub-trait for t-address balance, transaction history, and UTXO queries. Pulls in `tokio-stream`. |
 //! | `ping-very-insecure` | [`Indexer::ping`] method. Name mirrors the lightwalletd `--ping-very-insecure` CLI flag. Testing only. |
 //! | `back_compatible` | [`GrpcIndexer::get_zcb_client`] returning `zcash_client_backend`'s `CompactTxStreamerClient` for pepper-sync compatibility. |
+//! | `nym` | Route gRPC traffic through the [Nym mixnet](https://nymtech.net/) via an embedded SOCKS5 proxy. Adds `proxied: bool` parameter to all trait methods and exposes [`NymProxy`] for proxy lifecycle management. See [`GrpcIndexer::with_nym`] and [`GrpcIndexer::with_socks_proxy`]. |
 //!
 //! **Note:** Build docs with `--all-features` so intra-doc links to
 //! feature-gated items resolve:
@@ -33,9 +34,10 @@
 //! # Backwards compatibility
 //!
 //! Code that needs a raw `CompactTxStreamerClient<Channel>` (e.g.
-//! pepper-sync) can call [`GrpcIndexer::get_client`] for
-//! `lightwallet_protocol` types, or enable the `back_compatible` feature
-//! for [`GrpcIndexer::get_zcb_client`] which returns
+//! pepper-sync) can call [`GrpcIndexer::get_client`] (which respects
+//! the `proxied` parameter when the `nym` feature is enabled), or
+//! enable the `back_compatible` feature for
+//! [`GrpcIndexer::get_zcb_client`] which returns
 //! `zcash_client_backend`'s client type as a migration bridge.
 
 use std::future::Future;
@@ -43,6 +45,11 @@ use std::time::Duration;
 
 use tonic::Request;
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
+
+#[cfg(feature = "nym")]
+use std::pin::Pin;
+#[cfg(feature = "nym")]
+use std::task::{Context, Poll};
 
 pub use lightwallet_protocol;
 
@@ -63,6 +70,11 @@ mod globally_public;
 #[cfg(feature = "globally-public-transparent")]
 pub use globally_public::TransparentIndexer;
 
+#[cfg(feature = "nym")]
+mod nym_proxy;
+#[cfg(feature = "nym")]
+pub use nym_proxy::NymProxy;
+
 fn client_tls_config() -> ClientTlsConfig {
     // Allow self-signed certs in tests
     #[cfg(test)]
@@ -77,7 +89,84 @@ fn client_tls_config() -> ClientTlsConfig {
     ClientTlsConfig::new().with_webpki_roots()
 }
 
+/// Build a raw `rustls::ClientConfig` for TLS-over-SOCKS connections.
+///
+/// Tonic's `ClientTlsConfig` applies only to its built-in connector. When
+/// routing through a custom SOCKS5 connector we must layer TLS manually
+/// using `tokio-rustls`, so we need the raw `rustls::ClientConfig`.
+#[cfg(feature = "nym")]
+fn socks_rustls_client_config() -> tokio_rustls::rustls::ClientConfig {
+    let mut roots = tokio_rustls::rustls::RootCertStore::empty();
+    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let mut config = tokio_rustls::rustls::ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    // gRPC requires HTTP/2. ALPN must advertise "h2" so the server
+    // selects the correct protocol during the TLS handshake.
+    config.alpn_protocols = vec![b"h2".to_vec()];
+    config
+}
+
+/// Transport wrapper for SOCKS5-routed connections.
+///
+/// Wraps either a plain TCP stream (for `http://` targets) or a TLS
+/// stream layered over TCP (for `https://` targets). Both inner types
+/// are `Unpin`, so `AsyncRead`/`AsyncWrite` can be implemented safely
+/// without `pin-project`.
+#[cfg(feature = "nym")]
+enum SocksIo {
+    Plain(tokio::net::TcpStream),
+    Tls(Box<tokio_rustls::client::TlsStream<tokio::net::TcpStream>>),
+}
+
+#[cfg(feature = "nym")]
+impl tokio::io::AsyncRead for SocksIo {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            SocksIo::Plain(s) => Pin::new(s).poll_read(cx, buf),
+            SocksIo::Tls(s) => Pin::new(s).poll_read(cx, buf),
+        }
+    }
+}
+
+#[cfg(feature = "nym")]
+impl tokio::io::AsyncWrite for SocksIo {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        match self.get_mut() {
+            SocksIo::Plain(s) => Pin::new(s).poll_write(cx, buf),
+            SocksIo::Tls(s) => Pin::new(s).poll_write(cx, buf),
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            SocksIo::Plain(s) => Pin::new(s).poll_flush(cx),
+            SocksIo::Tls(s) => Pin::new(s).poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            SocksIo::Plain(s) => Pin::new(s).poll_shutdown(cx),
+            SocksIo::Tls(s) => Pin::new(s).poll_shutdown(cx),
+        }
+    }
+}
+
 const DEFAULT_GRPC_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Nym adds 3-10s latency per mix-node hop. Use a longer timeout for
+/// Nym-routed requests to avoid spurious timeouts.
+#[cfg(feature = "nym")]
+const DEFAULT_NYM_GRPC_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Trait for communicating with a Zcash chain indexer.
 ///
@@ -108,148 +197,207 @@ pub trait Indexer {
     type PingError: std::error::Error;
 
     /// Return server metadata (chain name, block height, version, etc.).
-    ///
-    /// The returned [`LightdInfo`] includes the chain name, current block height,
-    /// server version, and consensus branch ID. Callers should not cache this
-    /// value across sync boundaries as the block height is a point-in-time snapshot.
+    #[cfg(not(feature = "nym"))]
     fn get_info(&self) -> impl Future<Output = Result<LightdInfo, Self::GetInfoError>>;
+    #[cfg(feature = "nym")]
+    fn get_info(
+        &self,
+        proxied: bool,
+    ) -> impl Future<Output = Result<LightdInfo, Self::GetInfoError>>;
 
     /// Return the height and hash of the chain tip.
-    ///
-    /// The returned [`BlockId`] identifies the most recent block the server
-    /// is aware of. The hash may be omitted by some implementations.
+    #[cfg(not(feature = "nym"))]
     fn get_latest_block(&self) -> impl Future<Output = Result<BlockId, Self::GetLatestBlockError>>;
+    #[cfg(feature = "nym")]
+    fn get_latest_block(
+        &self,
+        proxied: bool,
+    ) -> impl Future<Output = Result<BlockId, Self::GetLatestBlockError>>;
 
     /// Submit a raw transaction to the network.
-    ///
-    /// On success, returns the transaction ID as a hex string.
-    /// On rejection by the network, returns a [`Self::SendTransactionError`]
-    /// containing the rejection reason. Callers should be prepared for
-    /// transient failures and may retry.
+    #[cfg(not(feature = "nym"))]
     fn send_transaction(
         &self,
         tx_bytes: Box<[u8]>,
     ) -> impl Future<Output = Result<String, Self::SendTransactionError>>;
+    #[cfg(feature = "nym")]
+    fn send_transaction(
+        &self,
+        tx_bytes: Box<[u8]>,
+        proxied: bool,
+    ) -> impl Future<Output = Result<String, Self::SendTransactionError>>;
 
     /// Fetch the note commitment tree state for the given block.
-    ///
-    /// Returns Sapling and Orchard commitment tree frontiers as of the
-    /// end of the specified block. The block can be identified by height,
-    /// hash, or both via [`BlockId`]. Requesting an unmined block is an error.
+    #[cfg(not(feature = "nym"))]
     fn get_tree_state(
         &self,
         block_id: BlockId,
     ) -> impl Future<Output = Result<TreeState, Self::GetTreeStateError>>;
+    #[cfg(feature = "nym")]
+    fn get_tree_state(
+        &self,
+        block_id: BlockId,
+        proxied: bool,
+    ) -> impl Future<Output = Result<TreeState, Self::GetTreeStateError>>;
 
     /// Return the compact block at the given height.
-    ///
-    /// The returned [`CompactBlock`] contains compact transaction data
-    /// sufficient for trial decryption and nullifier detection.
+    #[cfg(not(feature = "nym"))]
     fn get_block(
         &self,
         block_id: BlockId,
     ) -> impl Future<Output = Result<CompactBlock, Self::GetBlockError>>;
+    #[cfg(feature = "nym")]
+    fn get_block(
+        &self,
+        block_id: BlockId,
+        proxied: bool,
+    ) -> impl Future<Output = Result<CompactBlock, Self::GetBlockError>>;
 
     /// Return the compact block at the given height, containing only nullifiers.
-    ///
-    /// The returned [`CompactBlock`] omits output data, retaining only
-    /// spend nullifiers. Callers should migrate to [`get_block`](Indexer::get_block).
+    #[cfg(not(feature = "nym"))]
     #[deprecated(note = "use get_block instead")]
     fn get_block_nullifiers(
         &self,
         block_id: BlockId,
     ) -> impl Future<Output = Result<CompactBlock, Self::GetBlockNullifiersError>>;
+    #[cfg(feature = "nym")]
+    #[deprecated(note = "use get_block instead")]
+    fn get_block_nullifiers(
+        &self,
+        block_id: BlockId,
+        proxied: bool,
+    ) -> impl Future<Output = Result<CompactBlock, Self::GetBlockNullifiersError>>;
 
     /// Return a stream of consecutive compact blocks for the given range.
-    ///
-    /// Both endpoints of the range are inclusive. If `start <= end`, blocks
-    /// are yielded in ascending height order; if `start > end`, blocks are
-    /// yielded in descending height order. See the test
-    /// `tests::get_block_range_supports_descending_order` for a live
-    /// verification of descending order against a public indexer.
-    ///
-    /// Callers must consume or drop the stream before the connection is reused.
+    #[cfg(not(feature = "nym"))]
     fn get_block_range(
         &self,
         range: BlockRange,
     ) -> impl Future<Output = Result<tonic::Streaming<CompactBlock>, Self::GetBlockRangeError>>;
+    #[cfg(feature = "nym")]
+    fn get_block_range(
+        &self,
+        range: BlockRange,
+        proxied: bool,
+    ) -> impl Future<Output = Result<tonic::Streaming<CompactBlock>, Self::GetBlockRangeError>>;
 
     /// Return a stream of consecutive compact blocks (nullifiers only) for the given range.
-    ///
-    /// Same streaming guarantees as [`get_block_range`](Indexer::get_block_range)
-    /// but each block contains only nullifiers.
-    /// Callers should migrate to [`get_block_range`](Indexer::get_block_range).
+    #[cfg(not(feature = "nym"))]
     #[deprecated(note = "use get_block_range instead")]
     fn get_block_range_nullifiers(
         &self,
         range: BlockRange,
     ) -> impl Future<Output = Result<tonic::Streaming<CompactBlock>, Self::GetBlockRangeNullifiersError>>;
+    #[cfg(feature = "nym")]
+    #[deprecated(note = "use get_block_range instead")]
+    fn get_block_range_nullifiers(
+        &self,
+        range: BlockRange,
+        proxied: bool,
+    ) -> impl Future<Output = Result<tonic::Streaming<CompactBlock>, Self::GetBlockRangeNullifiersError>>;
 
     /// Return the full serialized transaction matching the given filter.
-    ///
-    /// The filter identifies a transaction by its txid hash. The returned
-    /// [`RawTransaction`] contains the complete serialized bytes and the
-    /// block height at which it was mined (0 if in the mempool).
+    #[cfg(not(feature = "nym"))]
     fn get_transaction(
         &self,
         filter: TxFilter,
     ) -> impl Future<Output = Result<RawTransaction, Self::GetTransactionError>>;
+    #[cfg(feature = "nym")]
+    fn get_transaction(
+        &self,
+        filter: TxFilter,
+        proxied: bool,
+    ) -> impl Future<Output = Result<RawTransaction, Self::GetTransactionError>>;
 
     /// Return a stream of compact transactions currently in the mempool.
-    ///
-    /// The request may include txid suffixes to exclude from the results,
-    /// allowing the caller to avoid re-fetching known transactions.
-    /// Results may be seconds out of date.
+    #[cfg(not(feature = "nym"))]
     fn get_mempool_tx(
         &self,
         request: GetMempoolTxRequest,
     ) -> impl Future<Output = Result<tonic::Streaming<CompactTx>, Self::GetMempoolTxError>>;
+    #[cfg(feature = "nym")]
+    fn get_mempool_tx(
+        &self,
+        request: GetMempoolTxRequest,
+        proxied: bool,
+    ) -> impl Future<Output = Result<tonic::Streaming<CompactTx>, Self::GetMempoolTxError>>;
 
     /// Return a stream of raw mempool transactions.
-    ///
-    /// The stream remains open while there are mempool transactions and
-    /// closes when a new block is mined.
+    #[cfg(not(feature = "nym"))]
     fn get_mempool_stream(
         &self,
     ) -> impl Future<Output = Result<tonic::Streaming<RawTransaction>, Self::GetMempoolStreamError>>;
+    #[cfg(feature = "nym")]
+    fn get_mempool_stream(
+        &self,
+        proxied: bool,
+    ) -> impl Future<Output = Result<tonic::Streaming<RawTransaction>, Self::GetMempoolStreamError>>;
 
     /// Return the note commitment tree state at the chain tip.
-    ///
-    /// Equivalent to calling [`get_tree_state`](Indexer::get_tree_state) with
-    /// the current tip height, but avoids the need to query the tip first.
+    #[cfg(not(feature = "nym"))]
     fn get_latest_tree_state(
         &self,
     ) -> impl Future<Output = Result<TreeState, Self::GetLatestTreeStateError>>;
+    #[cfg(feature = "nym")]
+    fn get_latest_tree_state(
+        &self,
+        proxied: bool,
+    ) -> impl Future<Output = Result<TreeState, Self::GetLatestTreeStateError>>;
 
     /// Return a stream of subtree roots for the given shielded protocol.
-    ///
-    /// Yields roots in ascending index order starting from `start_index`.
-    /// Pass `max_entries = 0` to request all available roots.
+    #[cfg(not(feature = "nym"))]
     fn get_subtree_roots(
         &self,
         arg: GetSubtreeRootsArg,
     ) -> impl Future<Output = Result<tonic::Streaming<SubtreeRoot>, Self::GetSubtreeRootsError>>;
+    #[cfg(feature = "nym")]
+    fn get_subtree_roots(
+        &self,
+        arg: GetSubtreeRootsArg,
+        proxied: bool,
+    ) -> impl Future<Output = Result<tonic::Streaming<SubtreeRoot>, Self::GetSubtreeRootsError>>;
 
     /// Simulate server latency for testing.
-    ///
-    /// The server will delay for the requested duration before responding.
-    /// Returns the number of concurrent Ping RPCs at entry and exit.
-    /// Requires the server to be started with `--ping-very-insecure`.
-    /// Do not enable in production.
-    #[cfg(feature = "ping-very-insecure")]
+    #[cfg(all(feature = "ping-very-insecure", not(feature = "nym")))]
     fn ping(
         &self,
         duration: ProtoDuration,
     ) -> impl Future<Output = Result<PingResponse, Self::PingError>>;
+    #[cfg(all(feature = "ping-very-insecure", feature = "nym"))]
+    fn ping(
+        &self,
+        duration: ProtoDuration,
+        proxied: bool,
+    ) -> impl Future<Output = Result<PingResponse, Self::PingError>>;
 }
 
 /// gRPC-backed [`Indexer`] that connects to a lightwalletd server.
+///
+/// # Proxy routing
+///
+/// When the `nym` feature is enabled, every trait method gains a
+/// `proxied: bool` parameter. Three usage paths are supported:
+///
+/// 1. **No proxy** — construct with [`new`](Self::new) and pass
+///    `proxied: false`.
+/// 2. **Built-in Nym proxy** — call [`with_nym()`](Self::with_nym)
+///    after construction. The proxy is created, validated, and owned
+///    by `GrpcIndexer`. On request failure it reconnects automatically.
+/// 3. **Manual SOCKS5** — call [`with_socks_proxy()`](Self::with_socks_proxy)
+///    with an external proxy address. No automatic reconnection.
+///
+/// Passing `proxied: true` without configuring a proxy returns
+/// [`GetClientError::NoProxy`].
 #[derive(Clone)]
 pub struct GrpcIndexer {
     uri: http::Uri,
     scheme: String,
     authority: http::uri::Authority,
     endpoint: Endpoint,
+    #[cfg(feature = "nym")]
+    socks_proxy: Option<String>,
+    #[cfg(feature = "nym")]
+    nym_proxy: Option<std::sync::Arc<tokio::sync::Mutex<NymProxy>>>,
 }
 
 impl std::fmt::Debug for GrpcIndexer {
@@ -287,6 +435,10 @@ impl GrpcIndexer {
             scheme,
             authority,
             endpoint,
+            #[cfg(feature = "nym")]
+            socks_proxy: None,
+            #[cfg(feature = "nym")]
+            nym_proxy: None,
         })
     }
 
@@ -294,12 +446,277 @@ impl GrpcIndexer {
         &self.uri
     }
 
+    /// Set a SOCKS5 proxy address for proxied connections.
+    ///
+    /// Pass the address returned by [`NymProxy::socks5_addr`] or any
+    /// other SOCKS5 proxy. When `proxied: true` is passed to trait
+    /// methods, connections are routed through this proxy.
+    ///
+    /// The caller manages the proxy lifecycle externally — no automatic
+    /// reconnection is provided for manually configured proxies.
+    #[cfg(feature = "nym")]
+    pub fn with_socks_proxy(mut self, addr: &str) -> Self {
+        self.socks_proxy = Some(addr.to_string());
+        self
+    }
+
+    /// Create, validate, and own an embedded Nym SOCKS5 proxy.
+    ///
+    /// This is the recommended way to use Nym routing. It:
+    /// 1. Starts a [`NymProxy`] (auto-discovers exit gateways, retries).
+    /// 2. Validates end-to-end connectivity by sending a
+    ///    `get_lightd_info` gRPC probe through the proxy.
+    /// 3. Stores the proxy internally — all clones of this `GrpcIndexer`
+    ///    share the same proxy via `Arc<Mutex<_>>`.
+    ///
+    /// On request failure, [`GrpcIndexer`] calls
+    /// [`NymProxy::reconnect`] and retries once automatically.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GetClientError::NymStart`] if no working exit gateway
+    /// can be found, or if the gRPC probe fails through all attempted
+    /// gateways.
+    #[cfg(feature = "nym")]
+    pub async fn with_nym(mut self) -> Result<Self, GetClientError> {
+        const MAX_WITH_NYM_ATTEMPTS: usize = 5;
+        const PROBE_TIMEOUT: Duration = Duration::from_secs(15);
+
+        let mut last_err = None;
+        for _attempt in 0..MAX_WITH_NYM_ATTEMPTS {
+            let proxy = match NymProxy::start().await {
+                Ok(p) => p,
+                Err(e) => {
+                    last_err = Some(GetClientError::NymStart(Box::new(e)));
+                    continue;
+                }
+            };
+            let addr = proxy.socks5_addr();
+
+            // Probe: send a get_lightd_info request through the proxy
+            // to verify end-to-end connectivity.
+            match tokio::time::timeout(PROBE_TIMEOUT, self.connect_channel_via_socks_proxy(&addr))
+                .await
+            {
+                Ok(Ok(channel)) => {
+                    // Verify gRPC works by sending a real request.
+                    let mut client = CompactTxStreamerClient::new(channel);
+                    let mut request = Request::new(Empty {});
+                    request.set_timeout(PROBE_TIMEOUT);
+                    match client.get_lightd_info(request).await {
+                        Ok(resp) => {
+                            let info = resp.into_inner();
+                            if info.block_height > 0 {
+                                self.nym_proxy =
+                                    Some(std::sync::Arc::new(tokio::sync::Mutex::new(proxy)));
+                                return Ok(self);
+                            }
+                            last_err = Some(GetClientError::NymStart(Box::new(
+                                NymProxyError::ConnectivityCheck(
+                                    "probe returned block_height=0".into(),
+                                ),
+                            )));
+                        }
+                        Err(e) => {
+                            last_err = Some(GetClientError::NymStart(Box::new(
+                                NymProxyError::ConnectivityCheck(e.to_string()),
+                            )));
+                        }
+                    }
+                }
+                Ok(Err(e)) => {
+                    last_err = Some(e);
+                }
+                Err(_timeout) => {
+                    last_err = Some(GetClientError::NymStart(Box::new(
+                        NymProxyError::ConnectivityCheck("probe timed out".into()),
+                    )));
+                }
+            }
+            proxy.disconnect().await;
+        }
+
+        Err(last_err.unwrap_or(GetClientError::NymStart(Box::new(
+            NymProxyError::NoProvider,
+        ))))
+    }
+
     /// Connect to the pre-configured endpoint and return a gRPC client.
+    ///
+    /// When the `nym` feature is enabled, pass `proxied: true` to route
+    /// through the configured SOCKS5 proxy, or `false` for a direct
+    /// connection. Without the `nym` feature this always connects
+    /// directly.
+    ///
+    /// # Privacy
+    ///
+    /// Calling this with `proxied: false` (or without the `nym` feature)
+    /// connects directly to the indexer, exposing the caller's IP.
+    #[cfg(not(feature = "nym"))]
     pub async fn get_client(&self) -> Result<CompactTxStreamerClient<Channel>, GetClientError> {
         let channel = self.endpoint.connect().await?;
         Ok(CompactTxStreamerClient::new(channel))
     }
 
+    /// Connect to the pre-configured endpoint and return a gRPC client.
+    ///
+    /// Pass `proxied: true` to route through the configured SOCKS5
+    /// proxy, or `false` for a direct connection.
+    ///
+    /// # Privacy
+    ///
+    /// Calling this with `proxied: false` connects directly to the
+    /// indexer, exposing the caller's IP.
+    #[cfg(feature = "nym")]
+    pub async fn get_client(
+        &self,
+        proxied: bool,
+    ) -> Result<CompactTxStreamerClient<Channel>, GetClientError> {
+        let channel = self.connect_channel(proxied).await?;
+        Ok(CompactTxStreamerClient::new(channel))
+    }
+
+    /// Return the effective target port for the configured URI.
+    ///
+    /// Uses the explicit authority port when present. Otherwise, falls
+    /// back to the scheme default: `443` for `https` and `80` for
+    /// `http`.
+    #[cfg(feature = "nym")]
+    fn default_target_port(&self) -> u16 {
+        self.authority
+            .port_u16()
+            .unwrap_or_else(|| match self.scheme.as_str() {
+                "https" => 443,
+                "http" => 80,
+                _ => unreachable!("GrpcIndexer::new validates the scheme"),
+            })
+    }
+
+    /// Connect a gRPC channel through the provided SOCKS5 proxy address.
+    ///
+    /// This performs a single connection attempt through the given local
+    /// SOCKS5 proxy. For `https` targets it also layers TLS manually
+    /// over the SOCKS5 tunnel. Proxy reset and retry policy are handled
+    /// by [`connect_channel`](Self::connect_channel), so this helper
+    /// stays off the hot path after a successful proxy startup.
+    #[cfg(feature = "nym")]
+    async fn connect_channel_via_socks_proxy(
+        &self,
+        proxy_addr: &str,
+    ) -> Result<Channel, GetClientError> {
+        let target_host = self.authority.host().to_string();
+        let target_port = self.default_target_port();
+        let is_tls = self.scheme == "https";
+
+        let proxy = proxy_addr.to_string();
+        let authority = self.authority.clone();
+
+        let connector = tower::service_fn(move |_uri: http::Uri| {
+            let proxy = proxy.clone();
+            let target_host = target_host.clone();
+            let target_port = target_port;
+            let is_tls = is_tls;
+            async move {
+                let tcp = tokio_socks::tcp::Socks5Stream::connect(
+                    &*proxy,
+                    (target_host.as_str(), target_port),
+                )
+                .await
+                .map_err(std::io::Error::other)?;
+
+                let io = if is_tls {
+                    let tls_config = socks_rustls_client_config();
+                    let connector =
+                        tokio_rustls::TlsConnector::from(std::sync::Arc::new(tls_config));
+                    let server_name =
+                        tokio_rustls::rustls::pki_types::ServerName::try_from(target_host.clone())
+                            .map_err(|e| {
+                                std::io::Error::new(std::io::ErrorKind::InvalidInput, e)
+                            })?;
+                    let tls_stream = connector.connect(server_name, tcp.into_inner()).await?;
+                    SocksIo::Tls(Box::new(tls_stream))
+                } else {
+                    SocksIo::Plain(tcp.into_inner())
+                };
+
+                Ok::<_, std::io::Error>(hyper_util::rt::TokioIo::new(io))
+            }
+        });
+
+        // Use http:// regardless of actual scheme — TLS is handled
+        // manually inside the connector (layered over SOCKS5), so tonic
+        // must not attempt its own TLS negotiation.
+        let endpoint = Endpoint::from_shared(format!("http://{authority}"))?;
+        Ok(endpoint.connect_with_connector(connector).await?)
+    }
+
+    /// Connect and return a raw `Channel`, routing through the proxy
+    /// if `proxied` is true.
+    ///
+    /// When an owned [`NymProxy`] is present (via [`with_nym`](Self::with_nym)),
+    /// a failed connection attempt triggers a one-time recovery:
+    /// [`NymProxy::reconnect`] is called and the connection retried once.
+    /// Manual SOCKS5 proxies (via [`with_socks_proxy`](Self::with_socks_proxy))
+    /// do not auto-recover.
+    ///
+    /// # Privacy guarantees (when `proxied` is true)
+    ///
+    /// - **DNS**: The target domain is sent as SOCKS5 ATYP=0x03, so DNS
+    ///   resolution happens at the exit gateway, not locally.
+    /// - **TLS**: The TLS handshake (including SNI) occurs inside the
+    ///   SOCKS5 tunnel after CONNECT completes — it is not visible to
+    ///   local network observers.
+    /// - **IP**: The indexer server sees the exit gateway's IP, not the
+    ///   caller's.
+    #[cfg(feature = "nym")]
+    async fn connect_channel(&self, proxied: bool) -> Result<Channel, GetClientError> {
+        if proxied {
+            // Resolve the proxy address: prefer the live address from an
+            // owned NymProxy (which may change after reconnect) over the
+            // static `socks_proxy` string (set by `with_socks_proxy()`).
+            let proxy_addr = if let Some(ref nym_proxy) = self.nym_proxy {
+                nym_proxy.lock().await.socks5_addr()
+            } else if let Some(ref addr) = self.socks_proxy {
+                addr.clone()
+            } else {
+                return Err(GetClientError::NoProxy);
+            };
+
+            match self.connect_channel_via_socks_proxy(&proxy_addr).await {
+                Ok(channel) => Ok(channel),
+                Err(first_error) => {
+                    // Only retry if we own the proxy and can reconnect.
+                    if let Some(ref nym_proxy) = self.nym_proxy {
+                        let mut guard = nym_proxy.lock().await;
+                        guard
+                            .reconnect()
+                            .await
+                            .map_err(|e| GetClientError::NymStart(Box::new(e)))?;
+                        // Read the new address after reconnect (port may have changed).
+                        let new_addr = guard.socks5_addr();
+                        drop(guard);
+                        self.connect_channel_via_socks_proxy(&new_addr).await
+                    } else {
+                        Err(first_error)
+                    }
+                }
+            }
+        } else {
+            Ok(self.endpoint.connect().await?)
+        }
+    }
+
+    /// Get a gRPC client, routing through the proxy if `proxied` is true.
+    #[cfg(feature = "nym")]
+    async fn get_client_routed(
+        &self,
+        proxied: bool,
+    ) -> Result<CompactTxStreamerClient<Channel>, GetClientError> {
+        let channel = self.connect_channel(proxied).await?;
+        Ok(CompactTxStreamerClient::new(channel))
+    }
+
+    #[cfg(not(feature = "nym"))]
     async fn time_boxed_call<T>(
         &self,
         payload: T,
@@ -310,11 +727,39 @@ impl GrpcIndexer {
         Ok((client, request))
     }
 
+    #[cfg(feature = "nym")]
+    async fn time_boxed_call_routed<T>(
+        &self,
+        payload: T,
+        proxied: bool,
+    ) -> Result<(CompactTxStreamerClient<Channel>, Request<T>), GetClientError> {
+        let client = self.get_client_routed(proxied).await?;
+        let mut request = Request::new(payload);
+        let timeout = if proxied {
+            DEFAULT_NYM_GRPC_TIMEOUT
+        } else {
+            DEFAULT_GRPC_TIMEOUT
+        };
+        request.set_timeout(timeout);
+        Ok((client, request))
+    }
+
+    #[cfg(not(feature = "nym"))]
     async fn stream_call<T>(
         &self,
         payload: T,
     ) -> Result<(CompactTxStreamerClient<Channel>, Request<T>), GetClientError> {
         let client = self.get_client().await?;
+        Ok((client, Request::new(payload)))
+    }
+
+    #[cfg(feature = "nym")]
+    async fn stream_call_routed<T>(
+        &self,
+        payload: T,
+        proxied: bool,
+    ) -> Result<(CompactTxStreamerClient<Channel>, Request<T>), GetClientError> {
+        let client = self.get_client_routed(proxied).await?;
         Ok((client, Request::new(payload)))
     }
 }
@@ -324,6 +769,7 @@ impl GrpcIndexer {
     /// Return a gRPC client using `zcash_client_backend`'s generated types,
     /// for compatibility with code that expects that crate's
     /// `CompactTxStreamerClient` (e.g. pepper-sync).
+    #[cfg(not(feature = "nym"))]
     pub async fn get_zcb_client(
         &self,
     ) -> Result<
@@ -333,6 +779,22 @@ impl GrpcIndexer {
         GetClientError,
     > {
         let channel = self.endpoint.connect().await?;
+        Ok(
+            zcash_client_backend::proto::service::compact_tx_streamer_client::CompactTxStreamerClient::new(channel),
+        )
+    }
+
+    #[cfg(feature = "nym")]
+    pub async fn get_zcb_client(
+        &self,
+        proxied: bool,
+    ) -> Result<
+        zcash_client_backend::proto::service::compact_tx_streamer_client::CompactTxStreamerClient<
+            Channel,
+        >,
+        GetClientError,
+    > {
+        let channel = self.connect_channel(proxied).await?;
         Ok(
             zcash_client_backend::proto::service::compact_tx_streamer_client::CompactTxStreamerClient::new(channel),
         )
@@ -356,16 +818,29 @@ impl Indexer for GrpcIndexer {
     #[cfg(feature = "ping-very-insecure")]
     type PingError = PingError;
 
+    #[cfg(not(feature = "nym"))]
     async fn get_info(&self) -> Result<LightdInfo, GetInfoError> {
         let (mut client, request) = self.time_boxed_call(Empty {}).await?;
         Ok(client.get_lightd_info(request).await?.into_inner())
     }
+    #[cfg(feature = "nym")]
+    async fn get_info(&self, proxied: bool) -> Result<LightdInfo, GetInfoError> {
+        let (mut client, request) = self.time_boxed_call_routed(Empty {}, proxied).await?;
+        Ok(client.get_lightd_info(request).await?.into_inner())
+    }
 
+    #[cfg(not(feature = "nym"))]
     async fn get_latest_block(&self) -> Result<BlockId, GetLatestBlockError> {
         let (mut client, request) = self.time_boxed_call(ChainSpec {}).await?;
         Ok(client.get_latest_block(request).await?.into_inner())
     }
+    #[cfg(feature = "nym")]
+    async fn get_latest_block(&self, proxied: bool) -> Result<BlockId, GetLatestBlockError> {
+        let (mut client, request) = self.time_boxed_call_routed(ChainSpec {}, proxied).await?;
+        Ok(client.get_latest_block(request).await?.into_inner())
+    }
 
+    #[cfg(not(feature = "nym"))]
     async fn send_transaction(&self, tx_bytes: Box<[u8]>) -> Result<String, SendTransactionError> {
         let (mut client, request) = self
             .time_boxed_call(RawTransaction {
@@ -386,18 +861,67 @@ impl Indexer for GrpcIndexer {
             )))
         }
     }
+    #[cfg(feature = "nym")]
+    async fn send_transaction(
+        &self,
+        tx_bytes: Box<[u8]>,
+        proxied: bool,
+    ) -> Result<String, SendTransactionError> {
+        let (mut client, request) = self
+            .time_boxed_call_routed(
+                RawTransaction {
+                    data: tx_bytes.to_vec(),
+                    height: 0,
+                },
+                proxied,
+            )
+            .await?;
+        let sendresponse = client.send_transaction(request).await?.into_inner();
+        if sendresponse.error_code == 0 {
+            let mut transaction_id = sendresponse.error_message;
+            if transaction_id.starts_with('\"') && transaction_id.ends_with('\"') {
+                transaction_id = transaction_id[1..transaction_id.len() - 1].to_string();
+            }
+            Ok(transaction_id)
+        } else {
+            Err(SendTransactionError::SendRejected(format!(
+                "{sendresponse:?}"
+            )))
+        }
+    }
 
+    #[cfg(not(feature = "nym"))]
     async fn get_tree_state(&self, block_id: BlockId) -> Result<TreeState, GetTreeStateError> {
         let (mut client, request) = self.time_boxed_call(block_id).await?;
         Ok(client.get_tree_state(request).await?.into_inner())
     }
+    #[cfg(feature = "nym")]
+    async fn get_tree_state(
+        &self,
+        block_id: BlockId,
+        proxied: bool,
+    ) -> Result<TreeState, GetTreeStateError> {
+        let (mut client, request) = self.time_boxed_call_routed(block_id, proxied).await?;
+        Ok(client.get_tree_state(request).await?.into_inner())
+    }
 
+    #[cfg(not(feature = "nym"))]
     async fn get_block(&self, block_id: BlockId) -> Result<CompactBlock, GetBlockError> {
         let (mut client, request) = self.time_boxed_call(block_id).await?;
         Ok(client.get_block(request).await?.into_inner())
     }
+    #[cfg(feature = "nym")]
+    async fn get_block(
+        &self,
+        block_id: BlockId,
+        proxied: bool,
+    ) -> Result<CompactBlock, GetBlockError> {
+        let (mut client, request) = self.time_boxed_call_routed(block_id, proxied).await?;
+        Ok(client.get_block(request).await?.into_inner())
+    }
 
     #[allow(deprecated)]
+    #[cfg(not(feature = "nym"))]
     async fn get_block_nullifiers(
         &self,
         block_id: BlockId,
@@ -405,7 +929,18 @@ impl Indexer for GrpcIndexer {
         let (mut client, request) = self.time_boxed_call(block_id).await?;
         Ok(client.get_block_nullifiers(request).await?.into_inner())
     }
+    #[allow(deprecated)]
+    #[cfg(feature = "nym")]
+    async fn get_block_nullifiers(
+        &self,
+        block_id: BlockId,
+        proxied: bool,
+    ) -> Result<CompactBlock, GetBlockNullifiersError> {
+        let (mut client, request) = self.time_boxed_call_routed(block_id, proxied).await?;
+        Ok(client.get_block_nullifiers(request).await?.into_inner())
+    }
 
+    #[cfg(not(feature = "nym"))]
     async fn get_block_range(
         &self,
         range: BlockRange,
@@ -413,8 +948,18 @@ impl Indexer for GrpcIndexer {
         let (mut client, request) = self.stream_call(range).await?;
         Ok(client.get_block_range(request).await?.into_inner())
     }
+    #[cfg(feature = "nym")]
+    async fn get_block_range(
+        &self,
+        range: BlockRange,
+        proxied: bool,
+    ) -> Result<tonic::Streaming<CompactBlock>, GetBlockRangeError> {
+        let (mut client, request) = self.stream_call_routed(range, proxied).await?;
+        Ok(client.get_block_range(request).await?.into_inner())
+    }
 
     #[allow(deprecated)]
+    #[cfg(not(feature = "nym"))]
     async fn get_block_range_nullifiers(
         &self,
         range: BlockRange,
@@ -425,7 +970,21 @@ impl Indexer for GrpcIndexer {
             .await?
             .into_inner())
     }
+    #[allow(deprecated)]
+    #[cfg(feature = "nym")]
+    async fn get_block_range_nullifiers(
+        &self,
+        range: BlockRange,
+        proxied: bool,
+    ) -> Result<tonic::Streaming<CompactBlock>, GetBlockRangeNullifiersError> {
+        let (mut client, request) = self.stream_call_routed(range, proxied).await?;
+        Ok(client
+            .get_block_range_nullifiers(request)
+            .await?
+            .into_inner())
+    }
 
+    #[cfg(not(feature = "nym"))]
     async fn get_transaction(
         &self,
         filter: TxFilter,
@@ -433,7 +992,17 @@ impl Indexer for GrpcIndexer {
         let (mut client, request) = self.time_boxed_call(filter).await?;
         Ok(client.get_transaction(request).await?.into_inner())
     }
+    #[cfg(feature = "nym")]
+    async fn get_transaction(
+        &self,
+        filter: TxFilter,
+        proxied: bool,
+    ) -> Result<RawTransaction, GetTransactionError> {
+        let (mut client, request) = self.time_boxed_call_routed(filter, proxied).await?;
+        Ok(client.get_transaction(request).await?.into_inner())
+    }
 
+    #[cfg(not(feature = "nym"))]
     async fn get_mempool_tx(
         &self,
         request: GetMempoolTxRequest,
@@ -441,19 +1010,47 @@ impl Indexer for GrpcIndexer {
         let (mut client, request) = self.stream_call(request).await?;
         Ok(client.get_mempool_tx(request).await?.into_inner())
     }
+    #[cfg(feature = "nym")]
+    async fn get_mempool_tx(
+        &self,
+        request: GetMempoolTxRequest,
+        proxied: bool,
+    ) -> Result<tonic::Streaming<CompactTx>, GetMempoolTxError> {
+        let (mut client, request) = self.stream_call_routed(request, proxied).await?;
+        Ok(client.get_mempool_tx(request).await?.into_inner())
+    }
 
+    #[cfg(not(feature = "nym"))]
     async fn get_mempool_stream(
         &self,
     ) -> Result<tonic::Streaming<RawTransaction>, GetMempoolStreamError> {
         let (mut client, request) = self.stream_call(Empty {}).await?;
         Ok(client.get_mempool_stream(request).await?.into_inner())
     }
+    #[cfg(feature = "nym")]
+    async fn get_mempool_stream(
+        &self,
+        proxied: bool,
+    ) -> Result<tonic::Streaming<RawTransaction>, GetMempoolStreamError> {
+        let (mut client, request) = self.stream_call_routed(Empty {}, proxied).await?;
+        Ok(client.get_mempool_stream(request).await?.into_inner())
+    }
 
+    #[cfg(not(feature = "nym"))]
     async fn get_latest_tree_state(&self) -> Result<TreeState, GetLatestTreeStateError> {
         let (mut client, request) = self.time_boxed_call(Empty {}).await?;
         Ok(client.get_latest_tree_state(request).await?.into_inner())
     }
+    #[cfg(feature = "nym")]
+    async fn get_latest_tree_state(
+        &self,
+        proxied: bool,
+    ) -> Result<TreeState, GetLatestTreeStateError> {
+        let (mut client, request) = self.time_boxed_call_routed(Empty {}, proxied).await?;
+        Ok(client.get_latest_tree_state(request).await?.into_inner())
+    }
 
+    #[cfg(not(feature = "nym"))]
     async fn get_subtree_roots(
         &self,
         arg: GetSubtreeRootsArg,
@@ -461,10 +1058,28 @@ impl Indexer for GrpcIndexer {
         let (mut client, request) = self.stream_call(arg).await?;
         Ok(client.get_subtree_roots(request).await?.into_inner())
     }
+    #[cfg(feature = "nym")]
+    async fn get_subtree_roots(
+        &self,
+        arg: GetSubtreeRootsArg,
+        proxied: bool,
+    ) -> Result<tonic::Streaming<SubtreeRoot>, GetSubtreeRootsError> {
+        let (mut client, request) = self.stream_call_routed(arg, proxied).await?;
+        Ok(client.get_subtree_roots(request).await?.into_inner())
+    }
 
-    #[cfg(feature = "ping-very-insecure")]
+    #[cfg(all(feature = "ping-very-insecure", not(feature = "nym")))]
     async fn ping(&self, duration: ProtoDuration) -> Result<PingResponse, PingError> {
         let (mut client, request) = self.time_boxed_call(duration).await?;
+        Ok(client.ping(request).await?.into_inner())
+    }
+    #[cfg(all(feature = "ping-very-insecure", feature = "nym"))]
+    async fn ping(
+        &self,
+        duration: ProtoDuration,
+        proxied: bool,
+    ) -> Result<PingResponse, PingError> {
+        let (mut client, request) = self.time_boxed_call_routed(duration, proxied).await?;
         Ok(client.ping(request).await?.into_inner())
     }
 }
@@ -502,6 +1117,13 @@ mod tests {
     use super::*;
 
     use tokio_rustls::rustls::RootCertStore;
+
+    /// Install the ring crypto provider for tests. This is needed when the
+    /// `nym` feature is enabled because nym's dependencies pull in both
+    /// `ring` and `aws-lc-rs`, which prevents automatic provider selection.
+    fn ensure_crypto_provider() {
+        let _ = tokio_rustls::rustls::crypto::ring::default_provider().install_default();
+    }
 
     fn add_test_cert_to_roots(roots: &mut RootCertStore) {
         use tonic::transport::CertificateDer;
@@ -625,6 +1247,7 @@ mod tests {
     ///   selection panics in test binaries.
     #[tokio::test]
     async fn add_test_cert_to_roots_enables_tls_handshake() {
+        ensure_crypto_provider();
         use http_body_util::Full;
         use hyper::service::service_fn;
         use hyper_util::rt::TokioIo;
@@ -754,6 +1377,7 @@ mod tests {
     /// the HTTPS client is constructed with `http2_only(true)`.
     #[tokio::test]
     async fn https_connector_must_not_downgrade_to_http1() {
+        ensure_crypto_provider();
         use http_body_util::Full;
 
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind failed");
@@ -806,13 +1430,17 @@ mod tests {
 
     #[tokio::test]
     async fn connects_to_public_mainnet_indexer_and_gets_info() {
+        ensure_crypto_provider();
         let endpoint = "https://zec.rocks:443".to_string();
 
         let uri: http::Uri = endpoint.parse().expect("bad mainnet indexer URI");
 
         let response = GrpcIndexer::new(uri)
             .expect("URI to be valid.")
-            .get_info()
+            .get_info(
+                #[cfg(feature = "nym")]
+                false,
+            )
             .await
             .expect("to get info");
         assert!(
@@ -842,12 +1470,19 @@ mod tests {
     /// the server returns blocks in decreasing height order.
     #[tokio::test]
     async fn get_block_range_supports_descending_order() {
+        ensure_crypto_provider();
         use tokio_stream::StreamExt;
 
         let uri: http::Uri = "https://zec.rocks:443".parse().unwrap();
         let indexer = GrpcIndexer::new(uri).expect("valid URI");
 
-        let tip = indexer.get_latest_block().await.expect("get_latest_block");
+        let tip = indexer
+            .get_latest_block(
+                #[cfg(feature = "nym")]
+                false,
+            )
+            .await
+            .expect("get_latest_block");
         let start_height = tip.height;
         let end_height = start_height.saturating_sub(4);
 
@@ -865,7 +1500,11 @@ mod tests {
         };
 
         let mut stream = indexer
-            .get_block_range(range)
+            .get_block_range(
+                range,
+                #[cfg(feature = "nym")]
+                false,
+            )
             .await
             .expect("get_block_range");
 
@@ -888,5 +1527,188 @@ mod tests {
                 "expected descending order, but got heights: {heights:?}",
             );
         }
+    }
+
+    // ── Nym integration tests ───────────────────────────────────────
+    // Run with: cargo test -p zingo-netutils --features nym
+
+    /// Helper: create a `GrpcIndexer` with a validated built-in Nym proxy.
+    #[cfg(feature = "nym")]
+    async fn nym_test_indexer() -> GrpcIndexer {
+        ensure_crypto_provider();
+        let uri: http::Uri = "https://zec.rocks:443".parse().unwrap();
+        GrpcIndexer::new(uri)
+            .expect("valid URI")
+            .with_nym()
+            .await
+            .expect("with_nym should start and validate proxy")
+    }
+
+    /// Verify that `proxied: false` works as a normal direct connection
+    /// without touching the proxy.
+    #[cfg(feature = "nym")]
+    #[tokio::test]
+    async fn proxied_false_bypasses_proxy() {
+        ensure_crypto_provider();
+        let uri: http::Uri = "https://zec.rocks:443".parse().unwrap();
+        let indexer = GrpcIndexer::new(uri).expect("valid URI");
+
+        let info = indexer.get_info(false).await.expect("get_info(false)");
+        assert!(!info.chain_name.is_empty());
+        assert!(info.block_height > 0);
+
+        // No proxy was configured, so nym_proxy should be None.
+        assert!(
+            indexer.nym_proxy.is_none(),
+            "nym_proxy should be None when no proxy is configured"
+        );
+    }
+
+    /// Verify that `proxied: true` without a configured proxy returns
+    /// `GetClientError::NoProxy`.
+    #[cfg(feature = "nym")]
+    #[tokio::test]
+    async fn proxied_true_without_proxy_errors() {
+        ensure_crypto_provider();
+        let uri: http::Uri = "https://zec.rocks:443".parse().unwrap();
+        let indexer = GrpcIndexer::new(uri).expect("valid URI");
+
+        let err = indexer
+            .get_info(true)
+            .await
+            .expect_err("should fail without proxy");
+        assert!(
+            err.to_string().contains("no proxy configured"),
+            "expected NoProxy error, got: {err}"
+        );
+    }
+
+    /// Simple get_info test using manual `NymProxy::start()` +
+    /// `with_socks_proxy()`.
+    #[cfg(feature = "nym")]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn get_info_via_manual_socks_proxy() {
+        ensure_crypto_provider();
+
+        // Manual setup with retry (Nym gateways are flaky).
+        let mut proxy = None;
+        let mut indexer = None;
+        for attempt in 0..5 {
+            let p = match NymProxy::start().await {
+                Ok(p) => p,
+                Err(_) if attempt < 4 => continue,
+                Err(e) => panic!("NymProxy::start failed after 5 attempts: {e}"),
+            };
+            let addr = p.socks5_addr();
+            let uri: http::Uri = "https://zec.rocks:443".parse().unwrap();
+            let idx = GrpcIndexer::new(uri)
+                .expect("valid URI")
+                .with_socks_proxy(&addr);
+
+            match tokio::time::timeout(Duration::from_secs(15), idx.get_info(true)).await {
+                Ok(Ok(info)) if info.block_height > 0 => {
+                    proxy = Some(p);
+                    indexer = Some(idx);
+                    break;
+                }
+                _ if attempt < 4 => {
+                    p.disconnect().await;
+                    continue;
+                }
+                Ok(Err(e)) => panic!("get_info failed after 5 attempts: {e}"),
+                _ => panic!("get_info timed out on all 5 attempts"),
+            }
+        }
+        let proxy = proxy.unwrap();
+        let indexer = indexer.unwrap();
+
+        let info = indexer
+            .get_info(true)
+            .await
+            .expect("get_info via manual proxy");
+        assert!(!info.chain_name.is_empty());
+        assert!(info.block_height > 0);
+
+        proxy.disconnect().await;
+    }
+
+    /// Simple get_info test using the `with_nym()` builder.
+    #[cfg(feature = "nym")]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn get_info_via_with_nym() {
+        let indexer = nym_test_indexer().await;
+        let info = indexer.get_info(true).await.expect("get_info via with_nym");
+        let chain = info.chain_name.to_ascii_lowercase();
+        assert!(
+            chain.contains("main"),
+            "expected mainnet, got chain_name={:?}",
+            info.chain_name
+        );
+        assert!(info.block_height > 0);
+    }
+
+    /// Mirror of `connects_to_public_mainnet_indexer_and_gets_info`
+    /// but routed over Nym.
+    #[cfg(feature = "nym")]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn get_latest_block_over_nym() {
+        let indexer = nym_test_indexer().await;
+        let block = indexer
+            .get_latest_block(true)
+            .await
+            .expect("get_latest_block via nym");
+        assert!(block.height > 0);
+    }
+
+    /// Mirror of `get_block_range_supports_descending_order` but
+    /// routed over Nym.
+    #[cfg(feature = "nym")]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn get_block_range_over_nym() {
+        use tokio_stream::StreamExt;
+
+        let indexer = nym_test_indexer().await;
+        let range = BlockRange {
+            start: Some(BlockId {
+                height: 2_000_000,
+                hash: vec![],
+            }),
+            end: Some(BlockId {
+                height: 2_000_002,
+                hash: vec![],
+            }),
+            pool_types: vec![],
+        };
+
+        let mut stream = indexer
+            .get_block_range(range, true)
+            .await
+            .expect("get_block_range via nym");
+
+        let mut count = 0;
+        while let Some(block) = stream.next().await {
+            let _ = block.expect("stream item");
+            count += 1;
+        }
+        assert!(count > 0, "expected at least one block");
+    }
+
+    /// Verify that cloned indexers share the same Nym proxy.
+    #[cfg(feature = "nym")]
+    #[tokio::test(flavor = "multi_thread")]
+    async fn clone_shares_proxy() {
+        let indexer = nym_test_indexer().await;
+        let clone = indexer.clone();
+
+        // Both should succeed using the same proxy.
+        let (r1, r2) = tokio::join!(indexer.get_info(true), clone.get_info(true));
+        r1.expect("original get_info via nym");
+        r2.expect("clone get_info via nym");
+
+        // Both point to the same Arc.
+        assert!(std::sync::Arc::ptr_eq(
+            indexer.nym_proxy.as_ref().unwrap(),
+            clone.nym_proxy.as_ref().unwrap(),
+        ));
     }
 }

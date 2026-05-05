@@ -33,61 +33,80 @@ pub trait TransparentIndexer: Indexer {
     type GetAddressUtxosError: std::error::Error;
     type GetAddressUtxosStreamError: std::error::Error;
 
-    /// Return a stream of transactions for a transparent address in a block range.
-    ///
-    /// Same behavior as
-    /// [`get_taddress_transactions`](TransparentIndexer::get_taddress_transactions).
-    /// This method is a legacy alias; callers should migrate.
+    #[cfg(not(feature = "nym"))]
     #[deprecated(note = "use get_taddress_transactions instead")]
     fn get_taddress_txids(
         &self,
         filter: TransparentAddressBlockFilter,
     ) -> impl Future<Output = Result<tonic::Streaming<RawTransaction>, Self::GetTaddressTxidsError>>;
+    #[cfg(feature = "nym")]
+    #[deprecated(note = "use get_taddress_transactions instead")]
+    fn get_taddress_txids(
+        &self,
+        filter: TransparentAddressBlockFilter,
+        proxied: bool,
+    ) -> impl Future<Output = Result<tonic::Streaming<RawTransaction>, Self::GetTaddressTxidsError>>;
 
-    /// Return a stream of transactions for a transparent address in a block range.
-    ///
-    /// Results are sorted by block height. Mempool transactions are not included.
+    #[cfg(not(feature = "nym"))]
     fn get_taddress_transactions(
         &self,
         filter: TransparentAddressBlockFilter,
     ) -> impl Future<Output = Result<tonic::Streaming<RawTransaction>, Self::GetTaddressTransactionsError>>;
+    #[cfg(feature = "nym")]
+    fn get_taddress_transactions(
+        &self,
+        filter: TransparentAddressBlockFilter,
+        proxied: bool,
+    ) -> impl Future<Output = Result<tonic::Streaming<RawTransaction>, Self::GetTaddressTransactionsError>>;
 
-    /// Return the total confirmed balance for the given transparent addresses.
-    ///
-    /// The returned [`Balance`] contains the sum in zatoshis. Only confirmed
-    /// (mined) outputs are included; mempool UTXOs are not counted.
+    #[cfg(not(feature = "nym"))]
     fn get_taddress_balance(
         &self,
         addresses: AddressList,
     ) -> impl Future<Output = Result<Balance, Self::GetTaddressBalanceError>>;
+    #[cfg(feature = "nym")]
+    fn get_taddress_balance(
+        &self,
+        addresses: AddressList,
+        proxied: bool,
+    ) -> impl Future<Output = Result<Balance, Self::GetTaddressBalanceError>>;
 
-    /// Return the total confirmed balance by streaming addresses to the server.
-    ///
-    /// Client-streaming variant of
-    /// [`get_taddress_balance`](TransparentIndexer::get_taddress_balance).
-    /// The addresses are streamed individually, avoiding message size limits
-    /// for large address sets. Returns the same [`Balance`] sum.
+    #[cfg(not(feature = "nym"))]
     fn get_taddress_balance_stream(
         &self,
         addresses: Vec<Address>,
     ) -> impl Future<Output = Result<Balance, Self::GetTaddressBalanceStreamError>>;
+    #[cfg(feature = "nym")]
+    fn get_taddress_balance_stream(
+        &self,
+        addresses: Vec<Address>,
+        proxied: bool,
+    ) -> impl Future<Output = Result<Balance, Self::GetTaddressBalanceStreamError>>;
 
-    /// Return UTXOs for the given addresses as a single response.
-    ///
-    /// Results are sorted by block height. Pass `max_entries = 0` for
-    /// unlimited results.
+    #[cfg(not(feature = "nym"))]
     fn get_address_utxos(
         &self,
         arg: GetAddressUtxosArg,
     ) -> impl Future<Output = Result<GetAddressUtxosReplyList, Self::GetAddressUtxosError>>;
+    #[cfg(feature = "nym")]
+    fn get_address_utxos(
+        &self,
+        arg: GetAddressUtxosArg,
+        proxied: bool,
+    ) -> impl Future<Output = Result<GetAddressUtxosReplyList, Self::GetAddressUtxosError>>;
 
-    /// Return a stream of UTXOs for the given addresses.
-    ///
-    /// Prefer this over [`get_address_utxos`](TransparentIndexer::get_address_utxos)
-    /// when the result set may be large.
+    #[cfg(not(feature = "nym"))]
     fn get_address_utxos_stream(
         &self,
         arg: GetAddressUtxosArg,
+    ) -> impl Future<
+        Output = Result<tonic::Streaming<GetAddressUtxosReply>, Self::GetAddressUtxosStreamError>,
+    >;
+    #[cfg(feature = "nym")]
+    fn get_address_utxos_stream(
+        &self,
+        arg: GetAddressUtxosArg,
+        proxied: bool,
     ) -> impl Future<
         Output = Result<tonic::Streaming<GetAddressUtxosReply>, Self::GetAddressUtxosStreamError>,
     >;
@@ -102,6 +121,7 @@ impl TransparentIndexer for GrpcIndexer {
     type GetAddressUtxosStreamError = GetAddressUtxosStreamError;
 
     #[allow(deprecated)]
+    #[cfg(not(feature = "nym"))]
     async fn get_taddress_txids(
         &self,
         filter: TransparentAddressBlockFilter,
@@ -109,7 +129,18 @@ impl TransparentIndexer for GrpcIndexer {
         let (mut client, request) = self.stream_call(filter).await?;
         Ok(client.get_taddress_txids(request).await?.into_inner())
     }
+    #[allow(deprecated)]
+    #[cfg(feature = "nym")]
+    async fn get_taddress_txids(
+        &self,
+        filter: TransparentAddressBlockFilter,
+        proxied: bool,
+    ) -> Result<tonic::Streaming<RawTransaction>, GetTaddressTxidsError> {
+        let (mut client, request) = self.stream_call_routed(filter, proxied).await?;
+        Ok(client.get_taddress_txids(request).await?.into_inner())
+    }
 
+    #[cfg(not(feature = "nym"))]
     async fn get_taddress_transactions(
         &self,
         filter: TransparentAddressBlockFilter,
@@ -120,7 +151,20 @@ impl TransparentIndexer for GrpcIndexer {
             .await?
             .into_inner())
     }
+    #[cfg(feature = "nym")]
+    async fn get_taddress_transactions(
+        &self,
+        filter: TransparentAddressBlockFilter,
+        proxied: bool,
+    ) -> Result<tonic::Streaming<RawTransaction>, GetTaddressTransactionsError> {
+        let (mut client, request) = self.stream_call_routed(filter, proxied).await?;
+        Ok(client
+            .get_taddress_transactions(request)
+            .await?
+            .into_inner())
+    }
 
+    #[cfg(not(feature = "nym"))]
     async fn get_taddress_balance(
         &self,
         addresses: AddressList,
@@ -128,7 +172,17 @@ impl TransparentIndexer for GrpcIndexer {
         let (mut client, request) = self.time_boxed_call(addresses).await?;
         Ok(client.get_taddress_balance(request).await?.into_inner())
     }
+    #[cfg(feature = "nym")]
+    async fn get_taddress_balance(
+        &self,
+        addresses: AddressList,
+        proxied: bool,
+    ) -> Result<Balance, GetTaddressBalanceError> {
+        let (mut client, request) = self.time_boxed_call_routed(addresses, proxied).await?;
+        Ok(client.get_taddress_balance(request).await?.into_inner())
+    }
 
+    #[cfg(not(feature = "nym"))]
     async fn get_taddress_balance_stream(
         &self,
         addresses: Vec<Address>,
@@ -140,7 +194,21 @@ impl TransparentIndexer for GrpcIndexer {
             .await?
             .into_inner())
     }
+    #[cfg(feature = "nym")]
+    async fn get_taddress_balance_stream(
+        &self,
+        addresses: Vec<Address>,
+        proxied: bool,
+    ) -> Result<Balance, GetTaddressBalanceStreamError> {
+        let mut client = self.get_client_routed(proxied).await?;
+        let stream = tokio_stream::iter(addresses);
+        Ok(client
+            .get_taddress_balance_stream(stream)
+            .await?
+            .into_inner())
+    }
 
+    #[cfg(not(feature = "nym"))]
     async fn get_address_utxos(
         &self,
         arg: GetAddressUtxosArg,
@@ -148,12 +216,31 @@ impl TransparentIndexer for GrpcIndexer {
         let (mut client, request) = self.time_boxed_call(arg).await?;
         Ok(client.get_address_utxos(request).await?.into_inner())
     }
+    #[cfg(feature = "nym")]
+    async fn get_address_utxos(
+        &self,
+        arg: GetAddressUtxosArg,
+        proxied: bool,
+    ) -> Result<GetAddressUtxosReplyList, GetAddressUtxosError> {
+        let (mut client, request) = self.time_boxed_call_routed(arg, proxied).await?;
+        Ok(client.get_address_utxos(request).await?.into_inner())
+    }
 
+    #[cfg(not(feature = "nym"))]
     async fn get_address_utxos_stream(
         &self,
         arg: GetAddressUtxosArg,
     ) -> Result<tonic::Streaming<GetAddressUtxosReply>, GetAddressUtxosStreamError> {
         let (mut client, request) = self.stream_call(arg).await?;
+        Ok(client.get_address_utxos_stream(request).await?.into_inner())
+    }
+    #[cfg(feature = "nym")]
+    async fn get_address_utxos_stream(
+        &self,
+        arg: GetAddressUtxosArg,
+        proxied: bool,
+    ) -> Result<tonic::Streaming<GetAddressUtxosReply>, GetAddressUtxosStreamError> {
+        let (mut client, request) = self.stream_call_routed(arg, proxied).await?;
         Ok(client.get_address_utxos_stream(request).await?.into_inner())
     }
 }
