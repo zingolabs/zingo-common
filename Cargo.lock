@@ -1863,13 +1863,13 @@ dependencies = [
 
 [[package]]
 name = "etcetera"
-version = "0.8.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "136d1b5283a1ab77bd9257427ffd09d8667ced0570b6f938942bc7568ed5b943"
+checksum = "26c7b13d0780cb82722fd59f6f57f925e143427e4a75313a6c77243bf5326ae6"
 dependencies = [
  "cfg-if",
  "home",
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1979,6 +1979,12 @@ name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
+
+[[package]]
+name = "foldhash"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "form_urlencoded"
@@ -2393,9 +2399,7 @@ version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
 dependencies = [
- "allocator-api2",
- "equivalent",
- "foldhash",
+ "foldhash 0.1.5",
 ]
 
 [[package]]
@@ -2403,6 +2407,11 @@ name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
+dependencies = [
+ "allocator-api2",
+ "equivalent",
+ "foldhash 0.2.0",
+]
 
 [[package]]
 name = "hashlink"
@@ -3764,7 +3773,7 @@ dependencies = [
 [[package]]
 name = "nym-api-requests"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "bs58",
  "celes",
@@ -3805,7 +3814,7 @@ dependencies = [
 [[package]]
 name = "nym-bandwidth-controller"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "async-trait",
  "log",
@@ -3823,7 +3832,7 @@ dependencies = [
 [[package]]
 name = "nym-bin-common"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "const-str",
  "log",
@@ -3855,7 +3864,7 @@ dependencies = [
 [[package]]
 name = "nym-client-core"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3915,7 +3924,7 @@ dependencies = [
 [[package]]
 name = "nym-client-core-config-types"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "humantime-serde",
  "nym-config",
@@ -3931,7 +3940,7 @@ dependencies = [
 [[package]]
 name = "nym-client-core-gateways-storage"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3951,7 +3960,7 @@ dependencies = [
 [[package]]
 name = "nym-client-core-surb-storage"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3970,7 +3979,7 @@ dependencies = [
 [[package]]
 name = "nym-coconut-dkg-common"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -3984,7 +3993,7 @@ dependencies = [
 [[package]]
 name = "nym-common"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "tracing",
  "tracing-test",
@@ -3993,7 +4002,7 @@ dependencies = [
 [[package]]
 name = "nym-compact-ecash"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "bincode",
  "bs58",
@@ -4016,7 +4025,7 @@ dependencies = [
 [[package]]
 name = "nym-config"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "dirs",
  "handlebars",
@@ -4031,7 +4040,7 @@ dependencies = [
 [[package]]
 name = "nym-contracts-common"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "bs58",
  "cosmwasm-schema",
@@ -4046,7 +4055,7 @@ dependencies = [
 [[package]]
 name = "nym-credential-storage"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4067,7 +4076,7 @@ dependencies = [
 [[package]]
 name = "nym-credential-utils"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "log",
  "nym-bandwidth-controller",
@@ -4086,7 +4095,7 @@ dependencies = [
 [[package]]
 name = "nym-credentials"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "bincode",
  "cosmrs",
@@ -4110,7 +4119,7 @@ dependencies = [
 [[package]]
 name = "nym-credentials-interface"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "nym-bls12_381-fork",
  "nym-compact-ecash",
@@ -4129,7 +4138,7 @@ dependencies = [
 [[package]]
 name = "nym-crypto"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "aead",
  "aes",
@@ -4164,7 +4173,7 @@ dependencies = [
 [[package]]
 name = "nym-ecash-contract-common"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "bs58",
  "cosmwasm-schema",
@@ -4178,7 +4187,7 @@ dependencies = [
 [[package]]
 name = "nym-ecash-signer-check-types"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "nym-coconut-dkg-common",
  "nym-crypto",
@@ -4194,7 +4203,7 @@ dependencies = [
 [[package]]
 name = "nym-ecash-time"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "nym-compact-ecash",
  "time",
@@ -4203,7 +4212,7 @@ dependencies = [
 [[package]]
 name = "nym-exit-policy"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "serde",
  "serde_json",
@@ -4215,7 +4224,7 @@ dependencies = [
 [[package]]
 name = "nym-gateway-client"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "futures",
  "getrandom 0.2.17",
@@ -4254,7 +4263,7 @@ dependencies = [
 [[package]]
 name = "nym-gateway-requests"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "bs58",
  "futures",
@@ -4284,7 +4293,7 @@ dependencies = [
 [[package]]
 name = "nym-group-contract-common"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "cosmwasm-schema",
  "cw-controllers",
@@ -4296,7 +4305,7 @@ dependencies = [
 [[package]]
 name = "nym-http-api-client"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "async-trait",
  "bincode",
@@ -4329,7 +4338,7 @@ dependencies = [
 [[package]]
 name = "nym-http-api-client-macro"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -4341,7 +4350,7 @@ dependencies = [
 [[package]]
 name = "nym-http-api-common"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "bincode",
  "serde",
@@ -4352,7 +4361,7 @@ dependencies = [
 [[package]]
 name = "nym-id"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "nym-credential-storage",
  "nym-credentials",
@@ -4365,7 +4374,7 @@ dependencies = [
 [[package]]
 name = "nym-ip-packet-requests"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "bincode",
  "bytes",
@@ -4386,7 +4395,7 @@ dependencies = [
 [[package]]
 name = "nym-kkt"
 version = "0.1.0"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "libcrux-chacha20poly1305",
  "libcrux-ecdh",
@@ -4407,7 +4416,7 @@ dependencies = [
 [[package]]
 name = "nym-kkt-ciphersuite"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "blake3",
  "libcrux-sha3",
@@ -4421,7 +4430,7 @@ dependencies = [
 [[package]]
 name = "nym-kkt-context"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "num_enum",
  "nym-kkt-ciphersuite",
@@ -4431,7 +4440,7 @@ dependencies = [
 [[package]]
 name = "nym-lp"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "bs58",
  "bytes",
@@ -4452,7 +4461,7 @@ dependencies = [
 [[package]]
 name = "nym-metrics"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "dashmap",
  "lazy_static",
@@ -4463,7 +4472,7 @@ dependencies = [
 [[package]]
 name = "nym-mixnet-client"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "dashmap",
  "futures",
@@ -4479,7 +4488,7 @@ dependencies = [
 [[package]]
 name = "nym-mixnet-contract-common"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "bs58",
  "cosmwasm-schema",
@@ -4500,7 +4509,7 @@ dependencies = [
 [[package]]
 name = "nym-multisig-contract-common"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -4516,7 +4525,7 @@ dependencies = [
 [[package]]
 name = "nym-network-defaults"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "cargo_metadata 0.19.2",
  "dotenvy",
@@ -4533,7 +4542,7 @@ dependencies = [
 [[package]]
 name = "nym-node-requests"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "celes",
  "humantime-serde",
@@ -4558,7 +4567,7 @@ dependencies = [
 [[package]]
 name = "nym-noise"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "arc-swap",
  "bytes",
@@ -4579,7 +4588,7 @@ dependencies = [
 [[package]]
 name = "nym-noise-keys"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "nym-crypto",
  "schemars",
@@ -4590,7 +4599,7 @@ dependencies = [
 [[package]]
 name = "nym-nonexhaustive-delayqueue"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "tokio",
  "tokio-stream",
@@ -4601,7 +4610,7 @@ dependencies = [
 [[package]]
 name = "nym-ordered-buffer"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "log",
  "thiserror 2.0.18",
@@ -4610,7 +4619,7 @@ dependencies = [
 [[package]]
 name = "nym-outfox"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "blake3",
  "chacha20",
@@ -4624,7 +4633,7 @@ dependencies = [
 [[package]]
 name = "nym-pemstore"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "pem",
  "tracing",
@@ -4634,7 +4643,7 @@ dependencies = [
 [[package]]
 name = "nym-performance-contract-common"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -4648,7 +4657,7 @@ dependencies = [
 [[package]]
 name = "nym-sdk"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4706,7 +4715,7 @@ dependencies = [
 [[package]]
 name = "nym-serde-helpers"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "base64 0.22.1",
  "bs58",
@@ -4718,7 +4727,7 @@ dependencies = [
 [[package]]
 name = "nym-service-provider-requests-common"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "serde",
  "thiserror 2.0.18",
@@ -4727,7 +4736,7 @@ dependencies = [
 [[package]]
 name = "nym-service-providers-common"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "async-trait",
  "log",
@@ -4741,7 +4750,7 @@ dependencies = [
 [[package]]
 name = "nym-socks5-client-core"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "anyhow",
  "dirs",
@@ -4774,7 +4783,7 @@ dependencies = [
 [[package]]
 name = "nym-socks5-proxy-helpers"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "bytes",
  "futures",
@@ -4789,7 +4798,7 @@ dependencies = [
 [[package]]
 name = "nym-socks5-requests"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "bincode",
  "log",
@@ -4805,7 +4814,7 @@ dependencies = [
 [[package]]
 name = "nym-sphinx"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "nym-crypto",
  "nym-metrics",
@@ -4831,7 +4840,7 @@ dependencies = [
 [[package]]
 name = "nym-sphinx-acknowledgements"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "nym-crypto",
  "nym-pemstore",
@@ -4848,7 +4857,7 @@ dependencies = [
 [[package]]
 name = "nym-sphinx-addressing"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "nym-crypto",
  "nym-sphinx-types",
@@ -4859,7 +4868,7 @@ dependencies = [
 [[package]]
 name = "nym-sphinx-anonymous-replies"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "bs58",
  "nym-crypto",
@@ -4877,7 +4886,7 @@ dependencies = [
 [[package]]
 name = "nym-sphinx-chunking"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "dashmap",
  "log",
@@ -4896,7 +4905,7 @@ dependencies = [
 [[package]]
 name = "nym-sphinx-cover"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "nym-crypto",
  "nym-sphinx-acknowledgements",
@@ -4914,7 +4923,7 @@ dependencies = [
 [[package]]
 name = "nym-sphinx-forwarding"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "nym-sphinx-addressing",
  "nym-sphinx-anonymous-replies",
@@ -4926,7 +4935,7 @@ dependencies = [
 [[package]]
 name = "nym-sphinx-framing"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "bytes",
  "cfg-if",
@@ -4943,7 +4952,7 @@ dependencies = [
 [[package]]
 name = "nym-sphinx-params"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "nym-crypto",
  "nym-sphinx-types",
@@ -4954,7 +4963,7 @@ dependencies = [
 [[package]]
 name = "nym-sphinx-routing"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "nym-sphinx-addressing",
  "nym-sphinx-types",
@@ -4964,7 +4973,7 @@ dependencies = [
 [[package]]
 name = "nym-sphinx-types"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "nym-outfox",
  "sphinx-packet",
@@ -4974,7 +4983,7 @@ dependencies = [
 [[package]]
 name = "nym-sqlx-pool-guard"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "proc_pidinfo",
  "sqlx",
@@ -4986,7 +4995,7 @@ dependencies = [
 [[package]]
 name = "nym-statistics-common"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "futures",
  "log",
@@ -5011,7 +5020,7 @@ dependencies = [
 [[package]]
 name = "nym-task"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "cfg-if",
  "futures",
@@ -5028,7 +5037,7 @@ dependencies = [
 [[package]]
 name = "nym-ticketbooks-merkle"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "nym-credentials-interface",
  "nym-serde-helpers",
@@ -5043,7 +5052,7 @@ dependencies = [
 [[package]]
 name = "nym-topology"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "async-trait",
  "nym-api-requests",
@@ -5063,7 +5072,7 @@ dependencies = [
 [[package]]
 name = "nym-upgrade-mode-check"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "jwt-simple",
  "nym-crypto",
@@ -5080,7 +5089,7 @@ dependencies = [
 [[package]]
 name = "nym-validator-client"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -5130,7 +5139,7 @@ dependencies = [
 [[package]]
 name = "nym-vesting-contract-common"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -5143,7 +5152,7 @@ dependencies = [
 [[package]]
 name = "nym-wasm-utils"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "futures",
  "getrandom 0.2.17",
@@ -5158,7 +5167,7 @@ dependencies = [
 [[package]]
 name = "nym-wireguard-types"
 version = "1.20.4"
-source = "git+https://github.com/idky137/nym.git?tag=zcash-lrz-compatibility-fix#4c6ed30553f6260c13d27d5fbe6514ea6f315c5e"
+source = "git+https://github.com/idky137/nym.git?branch=nym_wallet_poc_2_1#47871a658bfb022448ad49ac33c7828e91d05a68"
 dependencies = [
  "base64 0.22.1",
  "nym-crypto",
@@ -7005,9 +7014,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx"
-version = "0.8.6"
+version = "0.9.0-alpha.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fefb893899429669dcdd979aff487bd78f4064e5e7907e4269081e0ef7d97dc"
+checksum = "decccfa5f2f3eac95eb68085cfe69a0172fa9711666c3a634cfc806d4fb74a47"
 dependencies = [
  "sqlx-core",
  "sqlx-macros",
@@ -7018,12 +7027,13 @@ dependencies = [
 
 [[package]]
 name = "sqlx-core"
-version = "0.8.6"
+version = "0.9.0-alpha.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee6798b1838b6a0f69c007c133b8df5866302197e404e8b6ee8ed3e3a5e68dc6"
+checksum = "86854e8c6aba0dafcf1c04b4836b0b7fa3a20c560e3554567afefe1258fa4e60"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "cfg-if",
  "crc",
  "crossbeam-queue",
  "either",
@@ -7032,12 +7042,11 @@ dependencies = [
  "futures-intrusive",
  "futures-io",
  "futures-util",
- "hashbrown 0.15.5",
+ "hashbrown 0.16.1",
  "hashlink",
  "indexmap 2.13.0",
  "log",
  "memchr",
- "once_cell",
  "percent-encoding",
  "rustls 0.23.37",
  "serde",
@@ -7055,9 +7064,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-macros"
-version = "0.8.6"
+version = "0.9.0-alpha.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2d452988ccaacfbf5e0bdbc348fb91d7c8af5bee192173ac3636b5fb6e6715d"
+checksum = "d7aab9442ed1568e3aed6c368737226ee4e0e8d1deb0e0887fa6bf15282ace44"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7068,15 +7077,15 @@ dependencies = [
 
 [[package]]
 name = "sqlx-macros-core"
-version = "0.8.6"
+version = "0.9.0-alpha.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19a9c1841124ac5a61741f96e1d9e2ec77424bf323962dd894bdb93f37d5219b"
+checksum = "34eb4976b8f02ac57ee98d4ce40cd1aad7ab31d9792977bc3171f787ba6ba2fb"
 dependencies = [
+ "cfg-if",
  "dotenvy",
  "either",
  "heck",
  "hex",
- "once_cell",
  "proc-macro2",
  "quote",
  "serde",
@@ -7087,15 +7096,16 @@ dependencies = [
  "sqlx-postgres",
  "sqlx-sqlite",
  "syn 2.0.117",
+ "thiserror 2.0.18",
  "tokio",
  "url",
 ]
 
 [[package]]
 name = "sqlx-mysql"
-version = "0.8.6"
+version = "0.9.0-alpha.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa003f0038df784eb8fecbbac13affe3da23b45194bd57dba231c8f48199c526"
+checksum = "6fef16f3d52a3710a672b48175b713e86476e2df85576a753c8b37ad11a483c0"
 dependencies = [
  "atoi",
  "base64 0.22.1",
@@ -7118,7 +7128,6 @@ dependencies = [
  "log",
  "md-5",
  "memchr",
- "once_cell",
  "percent-encoding",
  "rand 0.8.5",
  "rsa",
@@ -7136,9 +7145,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-postgres"
-version = "0.8.6"
+version = "0.9.0-alpha.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db58fcd5a53cf07c184b154801ff91347e4c30d17a3562a635ff028ad5deda46"
+checksum = "f053cf36ecb2793a9d9bb02d01bbad1ef66481d5db6ff5ab2dfb7b070cc0d13c"
 dependencies = [
  "atoi",
  "base64 0.22.1",
@@ -7158,7 +7167,6 @@ dependencies = [
  "log",
  "md-5",
  "memchr",
- "once_cell",
  "rand 0.8.5",
  "serde",
  "serde_json",
@@ -7174,9 +7182,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-sqlite"
-version = "0.8.6"
+version = "0.9.0-alpha.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2d12fe70b2c1b4401038055f90f151b78208de1f9f89a7dbfd41587a10c3eea"
+checksum = "fe2cd6cee87120b1e1dd31356b5589911995c777707e49f2750eec7c7fe43eef"
 dependencies = [
  "atoi",
  "flume",
@@ -8712,6 +8720,15 @@ name = "windows-sys"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
+dependencies = [
+ "windows-targets 0.52.6",
+]
+
+[[package]]
+name = "windows-sys"
+version = "0.59.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
  "windows-targets 0.52.6",
 ]

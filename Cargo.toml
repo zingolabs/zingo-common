@@ -16,9 +16,9 @@ tokio = { version = "1" }
 tonic = { version = "0.14.4", features = ["tls-webpki-roots"] }
 
 # nym / socks5
-nym-sdk = { git = "https://github.com/idky137/nym.git", tag = "zcash-lrz-compatibility-fix" }
-nym-http-api-client = { git = "https://github.com/idky137/nym.git", tag = "zcash-lrz-compatibility-fix", package = "nym-http-api-client" }
-nym-validator-client = { git = "https://github.com/idky137/nym.git", tag = "zcash-lrz-compatibility-fix", package = "nym-validator-client", default-features = false, features = ["http-client"] }
+nym-sdk = { git = "https://github.com/idky137/nym.git", branch = "nym_wallet_poc_2_1" }
+nym-http-api-client = { git = "https://github.com/idky137/nym.git", branch = "nym_wallet_poc_2_1", package = "nym-http-api-client" }
+nym-validator-client = { git = "https://github.com/idky137/nym.git", branch = "nym_wallet_poc_2_1", package = "nym-validator-client", default-features = false, features = ["http-client"] }
 tokio-socks = "0.5"
 tower = "0.5"
 webpki-roots = "0.26"
