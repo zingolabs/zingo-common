@@ -314,9 +314,36 @@ impl NymProxy {
     /// try multiple entries since individual gateways may be offline.
     async fn discover_providers(nym_api_url: &str) -> Result<Vec<String>, NymProxyError> {
         use nym_validator_client::nym_api::NymApiClientExt as _;
+        use tokio_rustls::rustls::{ClientConfig, RootCertStore};
+
+        // reqwest's `rustls` feature enables `rustls-platform-verifier`, which
+        // on Android routes TLS verification through `CertPathValidator`. With
+        // Let's Encrypt certs that no longer ship an OCSP responder URL (their
+        // deprecation has been rolling out through 2024-2025), Android raises
+        // `CertPathValidatorException: Certificate does not specify OCSP
+        // responder` *before* the SOFT_FAIL flag we set on the revocation
+        // checker can kick in, so the handshake hard-fails as "Revoked".
+        // See https://github.com/rustls/rustls-platform-verifier/pull/179 for
+        // upstream context — there is no merged fix yet.
+        //
+        // The Nym validator API (`validator.nymtech.net`) runs on Let's
+        // Encrypt, so we hit this exact case. To unblock Android we override
+        // just this client's TLS config with one that uses webpki-roots and
+        // does no revocation check. Other TLS in the process (gRPC to the
+        // lightwalletd indexer, mixnet exit gateways, etc.) keeps using the
+        // platform verifier and its system trust store.
+        let root_store = RootCertStore {
+            roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+        };
+        let tls_config = ClientConfig::builder()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+        let reqwest_builder = nym_http_api_client::ReqwestClientBuilder::new()
+            .use_preconfigured_tls(tls_config);
 
         let api_client = nym_http_api_client::Client::builder(nym_api_url)
             .map_err(|e| NymProxyError::DiscoveryApi(e.to_string()))?
+            .with_reqwest_builder(reqwest_builder)
             .build()
             .map_err(|e| NymProxyError::DiscoveryApi(e.to_string()))?;
 
