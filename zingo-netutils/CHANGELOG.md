@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+### Removed
+
+### Deprecated
+
+## [5.0.1] - 2026-06-08
+
+### Changed
+
 - `Indexer` and `TransparentIndexer` traits:
   - methods now return `tonic::Status` error to be more compatible as drop-in replacement for ComapctTxStreamerClient
   - methods take a `&mut self` to allow for re-use of client instead of forcing creation of client for each rpc call
@@ -24,8 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - `GprcIndexer::get_zcb_client`: crate now unified to use `lightwallet_protocol` types throughout
-
-### Deprecated
 
 ## [4.0.0]
 
