@@ -15,6 +15,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [0.4.0] 2026-06-30
+
+### Deprecated
+
+### Added
+
+- `protocol::ActivationHeights::nu6_3` and
+  `protocol::ActivationHeightsBuilder::set_nu6_3`: NU6.3 activation height
+  support. `build()` enforces
+  `nu6_3 >= nu6_2`.
+
+### Changed
+
+### Removed
+
 ## [0.3.1] 2026-06-07
 
 ### Deprecated
