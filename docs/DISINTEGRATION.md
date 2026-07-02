@@ -36,7 +36,11 @@ development; restore `version` alongside `path` at release time, per the pepper-
 convention. Keep publishing to crates.io (zaino stable and client_rpc_test_fixtures consume
 published/pinned versions; zaino dev does not use it at all).
 
-### Phase 1: infrastructure grows the leaf types crate
+### Phase 1: infrastructure grows the leaf types crate (DONE, pending release)
+
+Implemented on infrastructure branch `add_zingo_consensus` (tip `0a003b4`), which also
+contains all of `add_client_support` (zingolabs/infrastructure#269) so zaino could bump
+its pin. Publishing and tagging remain.
 
 1. New workspace member `zingo-consensus` containing `ActivationHeights`,
    `ActivationHeightsBuilder`, and `NetworkType`, with the all-heights-one schedule as the
@@ -49,7 +53,10 @@ published/pinned versions; zaino dev does not use it at all).
 4. Publish the crate and tag infrastructure. The types now release on the same tag train as
    their main consumer, removing one hop from every future network-upgrade cascade.
 
-### Phase 2: zingolib workspace adopts the gate
+### Phase 2: zingolib workspace adopts the gate (DONE, pending release)
+
+Implemented on zingolib branch `add_regtest_gate` (`e0e7f259e`). Git-pins the
+infrastructure rev until zingo-consensus is published.
 
 1. Add `regtest = ["dep:zingo-consensus"]` to zingolib, default off. Gate the
    `ChainType::Regtest` variant and its fourteen production match arms, the
@@ -67,7 +74,9 @@ published/pinned versions; zaino dev does not use it at all).
    appears in `cargo tree --edges normal` for the release target.
 6. Release zingolib.
 
-### Phase 3: zaino drops the dependency
+### Phase 3: zaino drops the dependency (DONE)
+
+Implemented on zaino branch `drop_zingo_common_components` (`ba014515`).
 
 1. Delete the two `From` impls in `packages/zaino-common/src/config/network.rs` and the
    `zingo_common_components` dependency from `zaino-common`.
