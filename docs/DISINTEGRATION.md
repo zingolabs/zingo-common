@@ -13,6 +13,10 @@ This document is the migration sequence.
   schedule is the type's documented `Default` impl, not a separate helper.
 - `BlockHeight`, `TxId`, and `H0` migrate nowhere. An org-wide audit (2026-07-02) found zero
   consumers. Consumers needing equivalents already use `zcash_protocol` / `zcash_primitives`.
+- Dependency rule: a crate that depends on `zcash_local_net` takes the vocabulary through
+  its `protocol` re-exports and must NOT also directly depend on `zingo-consensus`. The
+  only direct dependents are `zcash_local_net` itself and zingolib's optional `regtest`
+  feature. Everything else reaches the types through one of those two re-exporters.
 - Regtest support is compiled out of production builds of zingolib, zingo-cli, zingo-mobile,
   and zingo-pc behind default-off `regtest` cargo features.
 - This repo is **archived, never deleted**: zingo-pc pins git tag `v0_2_with_nu6_2_upgrade`
@@ -37,9 +41,10 @@ published/pinned versions; zaino dev does not use it at all).
 1. New workspace member `zingo-consensus` containing `ActivationHeights`,
    `ActivationHeightsBuilder`, and `NetworkType`, with the all-heights-one schedule as the
    type's documented `Default` impl. Do not port `BlockHeight`, `TxId`, or `H0`.
-2. `zcash_local_net` and `regtest-launcher` switch to it by path. `zcash_local_net`
-   re-exports the builder alongside the two types it already re-exports (zaino needs to
-   construct the type, and the fields are private).
+2. `zcash_local_net` takes it by path and re-exports the builder alongside the two types
+   it already re-exports (zaino needs to construct the type, and the fields are private).
+   `regtest-launcher` consumes the `zcash_local_net::protocol` re-exports per the
+   dependency rule, with no direct dep of its own.
 3. Update `cargo_check_external_types` allowlists to name the new crate.
 4. Publish the crate and tag infrastructure. The types now release on the same tag train as
    their main consumer, removing one hop from every future network-upgrade cascade.
@@ -53,7 +58,11 @@ published/pinned versions; zaino dev does not use it at all).
 2. `testutils` feature requires `regtest`.
 3. zingo-cli: own default-off `regtest = ["zingolib/regtest"]` feature gating its two
    `commands.rs` arms. A default build rejects `regtest` as a chain selection at runtime.
-4. Swap the dependency: `zingo_common_components` out, `zingo-consensus` in (optional).
+4. Swap the dependency: `zingo_common_components` out everywhere. zingolib gains
+   `zingo-consensus` as its optional direct dep. The test crates that depend on
+   `zcash_local_net` (zingolib_testutils, libtonode-tests, darkside-tests) import via
+   `zcash_local_net::protocol` or zingolib's gated re-export instead, per the dependency
+   rule; they take no direct dep.
 5. Add the release tripwire: a shell script in release CI fails if `zingo-consensus`
    appears in `cargo tree --edges normal` for the release target.
 6. Release zingolib.
@@ -77,8 +86,8 @@ For each app:
    address-decoding candidate list (production tries Mainnet and Testnet only), and the
    schedule-helper import.
 3. Replace `all_height_one_nus` (0.2 line, `for_test` feature) with
-   `ActivationHeights::default()` behind the gate, and bump zingolib to the
-   phase-2 release.
+   `ActivationHeights::default()` via zingolib's gated re-export (no direct
+   `zingo-consensus` dep), and bump zingolib to the phase-2 release.
 4. Add the same shell-script tripwire to the release pipelines (Android, iOS, desktop).
 
 ### Phase 5: this repo winds down
