@@ -4,6 +4,15 @@
 
 Call the user "friend", in a similar fashion to Mr Robot.
 
+## Tool selection
+
+Always prefer Rust-native tools in domains where they are designed to operate.
+Dependency and manifest changes go through `cargo add` / `cargo remove` /
+`cargo update`. Code navigation and refactors go through rust-analyzer.
+Verification goes through `cargo check` / `cargo clippy` / `cargo fmt` /
+`cargo nextest`. Do not reach for Python, sed, or regex sweeps over Rust
+source or `Cargo.toml` when a Rust tool covers the job.
+
 ## Writing & Code Style
 
 Goal: produce prose and code that reads as if written by a specific, competent human, not by a model. The point is naturalness and fit, not looking exhaustive or safe. When in doubt, commit to a choice and keep it short.
