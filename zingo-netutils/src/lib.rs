@@ -272,6 +272,29 @@ impl GrpcIndexer {
         &self.uri
     }
 
+    /// Builds a [`GrpcIndexer`] from a raw endpoint string.
+    ///
+    /// Wallet configs and CLI flags routinely carry endpoints in informal
+    /// shapes (`zec.rocks`, `zec.rocks:9067`, `https://zec.rocks:443/`).
+    /// This constructor canonicalizes the input via `lwd-uri-util`
+    /// (adds the missing `https://` scheme, fills the default 443 port,
+    /// strips the trailing slash, lowercases host) before connecting,
+    /// so callers no longer pre-parse with `str::parse::<http::Uri>`.
+    ///
+    /// ```no_run
+    /// # async fn f() -> Result<(), zingo_netutils::GetClientError> {
+    /// let indexer = zingo_netutils::GrpcIndexer::from_endpoint_str("zec.rocks").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn from_endpoint_str(endpoint: &str) -> Result<Self, GetClientError> {
+        let canonical = lwd_uri_util::canonicalize_endpoint(endpoint);
+        let uri: http::Uri = canonical
+            .parse()
+            .map_err(|_| GetClientError::InvalidAuthority)?;
+        Self::new(uri).await
+    }
+
     /// Returns the "surface net" gRPC client where the IP address is not obfuscated.
     pub async fn get_clear_net_client(&self) -> CompactTxStreamerClient<Channel> {
         self.clear_net_client.clone()
@@ -895,5 +918,12 @@ mod tests {
                 "expected descending order, but got heights: {heights:?}",
             );
         }
+    }
+    #[tokio::test]
+    async fn from_endpoint_str_canonicalizes() {
+        // offline check: canonicalization happens before connect, so a
+        // bad-scheme URI still surfaces as InvalidScheme.
+        let res = GrpcIndexer::from_endpoint_str("ftp://example.com:1234").await;
+        assert!(res.is_err());
     }
 }
